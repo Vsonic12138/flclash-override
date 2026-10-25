@@ -2,3 +2,6 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+pipeline-input.json
+pipeline-result.json
+bm7ai/

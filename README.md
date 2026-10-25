@@ -1,20 +1,21 @@
 # flclash-override
 
-FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到机场订阅生成的配置最前面，节点、代理组、DNS 和 `MATCH` 兜底全部保持订阅原样。
+FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到机场订阅生成的配置最前面。节点原样保留，只额外新增一个「🤖 AI 网站」策略组；DNS 和 `MATCH` 兜底不动。
 
 解决的问题：机场订阅每天自动更新会把 `config.yaml` 整个重写，你在界面里手动加的规则位置不保、换机场还得重配一遍。用覆写脚本后，**规则在脚本里，订阅只负责提供节点**，换机场、换规则集都不影响。
 
-## 三层结构
+## 四层结构
 
 ```
 覆写脚本（一个，所有订阅共用）
-├─ ① 自定义层（内联，约 30 条）     嘉立创 / 立创 / 飞书 / 字节 / B站  → DIRECT
-├─ ② 上游层（rule-providers 引用）  Loyalsoldier/clash-rules ★28.9k 日更
+├─ ① 自定义直连层（内联，33 条）    嘉立创 / 立创 / 飞书 / 字节 / B站  → DIRECT
+├─ ② AI 层（内联 80 条 + 引用 204 条）  AI 域名 → 🤖 AI 网站（自动新建的策略组）
+├─ ③ 上游层（rule-providers 引用）  Loyalsoldier/clash-rules ★28.9k 日更
 │     private → DIRECT / reject → REJECT / direct → DIRECT
-└─ ③ 订阅层（原样保留）             机场自带规则 + MATCH 兜底
+└─ ④ 订阅层（原样保留）             机场自带规则 + MATCH 兜底
 ```
 
-优先级自上而下，越靠前越先生效。第 ① 层内联在脚本里，零外部依赖，永远可用；第 ② 层是引用过来的大名单，24 小时自动刷新；第 ③ 层完全不动，机场的流媒体解锁、地区分流照样生效。
+优先级自上而下，越靠前越先生效。第 ① ② 层内联在脚本里，零外部依赖，永远可用；第 ③ 层是引用过来的大名单，24 小时自动刷新；第 ④ 层完全不动，机场的流媒体解锁、地区分流照样生效。
 
 ## 为什么「基于」高星仓库而不是 fork
 
@@ -64,6 +65,34 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 
 走代理纯烧流量，而且这些站要登录/下单，出口 IP 是境外节点容易触发风控。B 站则是全站直连（含直播流 `*.bilivideo.com`），看视频不消耗代理流量。
 
+## AI 层：自动建一个「🤖 AI 网站」组
+
+国外 AI 之前是**靠最后一条 `MATCH` 兜底**才走代理的，没有任何显式规则，其中还有一个真漏洞：`copilot.microsoft.com` 命中了订阅里的 `DOMAIN-SUFFIX,microsoft.com,DIRECT`，实测直连 TLS 握手直接被重置，**Copilot 完全用不了**（走代理也一样，因为规则先把它判成了直连）。
+
+现在脚本会：
+
+1. 在最前面插入策略组 **`🤖 AI 网站`**（`select`），成员 = 原主策略组 + 所有节点 + `DIRECT`，**默认选中第一项「跟随原主组」**，所以不额外操作时行为和以前完全一致；
+2. 把 AI 域名全部指向这个组，且排在订阅的 `microsoft.com → DIRECT` 之类规则**之前**，堵住类似漏洞；
+3. 名单双层：内联 80 条精准域名 + 引用 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 的 `category-ai-chat-!cn`（204 条，24 小时自动刷新）。
+
+覆盖范围（内联部分，上游名单还会补更多）：
+
+| 类别 | 域名 |
+| --- | --- |
+| OpenAI / ChatGPT / Sora | openai.com、chatgpt.com、oaistatic.com、oaiusercontent.com、sora.com |
+| Google / Gemini | gemini.google.com、aistudio.google.com、generativelanguage.googleapis.com、notebooklm.google.com、jules.google、deepmind.google、makersuite.google.com |
+| Anthropic / Claude | claude.ai、anthropic.com |
+| 微软 Copilot / Bing Chat | copilot.microsoft.com、copilot.cloud.microsoft、sydney.bing.com、edgeservices.bing.com、services.bingapis.com、gateway.bingviz.microsoft.net、designer.microsoft.com |
+| xAI / Grok | x.ai、grok.com、grok.x.com、accounts.x.ai、api.x.ai |
+| 检索 / 对话 | perplexity.ai、pplx.ai、poe.com、you.com、phind.com、pi.ai、monica.im |
+| 模型服务 / 推理 | mistral.ai、cohere.ai、cohere.com、groq.com、cerebras.ai、huggingface.co、hf.co、replicate.com、together.ai、together.xyz、fireworks.ai、deepinfra.com、openrouter.ai、ollama.com、lmstudio.ai |
+| 生成式 / 创意 | midjourney.com、suno.com、suno.ai、runwayml.com、lumalabs.ai、pika.art、ideogram.ai、leonardo.ai、stability.ai、elevenlabs.io、elevenlabs.com、heygen.com、synthesia.io、character.ai、c.ai |
+| 编码类 AI | cursor.com、cursor.sh、windsurf.com、githubcopilot.com、v0.app、v0.dev、lovable.dev、gamma.app、lmarena.ai、chat.lmsys.org |
+
+上游名单还额外覆盖了 notebooklm、antigravity、claudemcp、deepwiki、grok.x.com、manus、sider、coderabbit、comfyui、trae、marscode 等 200 多个域名。
+
+**想给 AI 单独固定节点**：FlClash → 代理 → `🤖 AI 网站` → 选一个美国/日本节点。这样其它流量仍走主组，AI 用固定出口，主组换节点也不会把 AI 带偏。
+
 ## 快速开始
 
 1. FlClash → **配置** → **覆写脚本** → 新建，URL 填：
@@ -87,6 +116,8 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 | `ENABLE_GFW_SET` | `false` | 引用 gfw 名单强制走代理。出口组**自动探测**（取第一个 `select` 组），不写死任何组名；找不到就跳过 |
 | `DIRECT_AKAMAI` | `true` | `akamaized.net` 是否直连。它是 B 站海外备用源，也服务不少国外站点，觉得某站变慢就改 `false` |
 | `APPLY_DNS` | `false` | 顺带修 DNS：`fallback-lazy-query: true`、补全 `fake-ip-filter`、`listen` 收回到 `127.0.0.1:1053`。**界面里自己调 DNS 就保持 `false`** |
+| `ENABLE_AI_GROUP` | `true` | 创建「🤖 AI 网站」策略组（订阅已有同名组则直接复用，不会重复创建）。关掉后 AI 规则回落到原主策略组 |
+| `ENABLE_AI_PROVIDER` | `true` | 引用 MetaCubeX 的 `category-ai-chat-!cn` 名单（204 条，日更）。关掉后只用内联的 80 条 |
 
 ## 修改规则
 
@@ -101,7 +132,16 @@ const DIRECT_DOMAINS = [
 
 提交后，在 FlClash 的覆写脚本页面点一下更新即可。不需要动订阅。
 
-**换上游**：改 `UPSTREAM` 常量即可，例如换成 blackmatrix7 的分类或 MetaCubeX。拉取失败时换成 jsDelivr 镜像（文件里已写好注释）。
+**加 AI 站点**：往 `AI_DOMAINS` 加一行即可（同样不带协议和路径），例如：
+
+```js
+const AI_DOMAINS = [
+  'chatgpt.com',
+  '你的新AI域名.com',   // ← 加这里
+];
+```
+
+**换上游**：改 `UPSTREAM` / `AI_UPSTREAM` 常量即可，例如换成 blackmatrix7 的分类或 MetaCubeX。拉取失败时换成 jsDelivr 镜像（文件里已写好注释）。
 
 ## 自测
 
@@ -109,7 +149,7 @@ const DIRECT_DOMAINS = [
 node test/smoke.js
 ```
 
-4 个场景：挂上游名单 / 关闭上游名单 / gfw 出口组自动探测 / 异常输入。校验节点与代理组是否原样保留、三层顺序是否正确、规则是否去重、`MATCH` 是否还在最后。推送时 GitHub Actions 会自动跑一遍。
+5 个场景：AI 组 + 上游名单全开 / 关闭上游名单 / gfw 出口组自动探测 / AI 层开关组合（含订阅自带同名组复用、无节点只有组名）/ 异常输入。校验节点是否原样保留、AI 组是否跟随主组、`copilot` 是否排在 `microsoft.com` 直连之前、四层顺序、规则去重、`MATCH` 是否还在最后。推送时 GitHub Actions 会自动跑一遍。
 
 ## 常见问题
 
@@ -124,6 +164,12 @@ node test/smoke.js
 
 **这和 `geosite:cn` 冲突吗？**
 不冲突。`geosite:cn` 来自 MetaCubeX 内置数据，走的是订阅原有的 `GEOIP,CN,DIRECT` 兜底；我们只是在这之前补上 GeoIP 判不准的域名。
+
+**`🤖 AI 网站` 这个组是干什么的？能删吗？**
+脚本会自动建（订阅自带同名组则复用），AI 域名都指向它。它默认跟随你的主策略组，所以不管它也不影响使用；想给 AI 固定出口时再去里面选节点。删掉的话下次应用配置又会生成，要彻底关掉就把 `ENABLE_AI_GROUP` 改成 `false`（此时 AI 规则直接指向主组）。
+
+**为什么 AI 域名要显式写规则，靠 `MATCH` 兜底不行吗？**
+不行。`MATCH` 是最后一道兜底，订阅里任何一条更早的 `DIRECT` 规则都能截胡——比如 `microsoft.com → DIRECT` 就把 Copilot 判成了直连并且实测连不通。显式规则排在订阅规则之前，才不会被覆盖。
 
 ## License
 

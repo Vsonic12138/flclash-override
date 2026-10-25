@@ -31,11 +31,14 @@ function makeConfig(groups) {
     mixed_port: 7890,
     mode: 'rule',
     proxies: [{ name: 'node-a', type: 'ss', server: 'example.com', port: 8388 }],
-    'proxy-groups': groups || [{ name: 'PROXY', type: 'select', proxies: ['node-a'] }],
+    'proxy-groups':
+      groups ||
+      [{ name: 'PROXY', type: 'select', proxies: ['node-a'] }],
     dns: { enable: true, 'enhanced-mode': 'fake-ip' },
     rules: [
       'DOMAIN-SUFFIX,akamaized.net,PROXY',
       'DOMAIN-SUFFIX,feishu.cn,PROXY',
+      'DOMAIN-SUFFIX,microsoft.com,DIRECT',
       'DOMAIN-SUFFIX,cn,DIRECT',
       'GEOIP,CN,DIRECT',
       'MATCH,PROXY',
@@ -44,31 +47,63 @@ function makeConfig(groups) {
 }
 
 const keysOf = (rules) => rules.map((r) => r.split(',').slice(0, 2).join(',').toLowerCase());
+const AI = '🤖 AI 网站';
 
-// ==================== 场景 1：默认（挂上游名单） ====================
+// ==================== 场景 1：默认（AI 组 + 上游名单都开） ====================
 {
   const { main } = load();
   const base = makeConfig();
   const out = main(JSON.parse(JSON.stringify(base)));
 
-  // 节点与分组原样保留
+  // 节点原样保留
   assert.deepStrictEqual(out.proxies, base.proxies, '节点必须原样保留');
-  assert.deepStrictEqual(out['proxy-groups'], base['proxy-groups'], '代理组必须原样保留');
 
-  // 自定义层在最前
+  // 代理组：AI 组插在最前，原组原样保留
+  assert.strictEqual(out['proxy-groups'][0].name, AI, 'AI 组应排在最前（方便在界面里看到）');
+  assert.strictEqual(out['proxy-groups'][0].type, 'select', 'AI 组必须是 select');
+  assert.deepStrictEqual(out['proxy-groups'][1], base['proxy-groups'][0], '原策略组必须原样保留');
+
+  // AI 组成员：首项跟随原组，末项可切直连，且包含全部节点
+  const members = out['proxy-groups'][0].proxies;
+  assert.strictEqual(members[0], 'PROXY', 'AI 组默认应跟随原策略组');
+  assert.strictEqual(members[members.length - 1], 'DIRECT', 'AI 组应保留 DIRECT 选项');
+  assert.ok(members.includes('node-a'), 'AI 组应包含订阅节点');
+
+  // 自定义层仍是最前
   assert.strictEqual(out.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '首条应为自定义规则');
 
-  // 上游层顺序：private → reject → direct，且都在订阅规则之前
+  // AI 层存在且排在订阅规则之前
+  const aiSet = out.rules.indexOf('RULE-SET,ai-chat,' + AI);
+  assert.ok(aiSet > 0, '应有 AI 名单规则');
+  assert.ok(
+    out.rules.indexOf('DOMAIN-SUFFIX,chatgpt.com,' + AI) > -1,
+    'chatgpt.com 应指向 AI 组'
+  );
+  assert.ok(
+    out.rules.indexOf('DOMAIN-SUFFIX,copilot.microsoft.com,' + AI) > -1,
+    'copilot 应指向 AI 组'
+  );
+
+  // 关键：copilot 必须抢在订阅的 microsoft.com 直连之前
+  const copilot = out.rules.indexOf('DOMAIN-SUFFIX,copilot.microsoft.com,' + AI);
+  const ms = out.rules.indexOf('DOMAIN-SUFFIX,microsoft.com,DIRECT');
+  assert.ok(copilot > -1 && copilot < ms, 'copilot 必须排在 microsoft.com 直连之前');
+  assert.ok(aiSet < ms, 'AI 名单必须排在订阅规则之前');
+
+  // AI 层排在自定义直连之后（自定义直连优先级最高）
+  assert.ok(out.rules[0] === 'DOMAIN-SUFFIX,easyeda.com,DIRECT' && copilot > 0, '顺序应为 自定义直连 → AI');
+
+  // 上游层顺序：private → reject → direct
   const at = (rule) => out.rules.indexOf(rule);
   assert.ok(at('RULE-SET,up-private,DIRECT') > -1, '缺少 private 名单');
   assert.ok(at('RULE-SET,up-private,DIRECT') < at('RULE-SET,up-reject,REJECT'), 'private 应在 reject 前');
   assert.ok(at('RULE-SET,up-reject,REJECT') < at('RULE-SET,up-direct,DIRECT'), 'reject 应在 direct 前');
   assert.ok(at('RULE-SET,up-direct,DIRECT') < at('DOMAIN-SUFFIX,cn,DIRECT'), '上游层应在订阅规则前');
-  assert.strictEqual(at('RULE-SET,up-gfw,'), -1, '默认不启用 gfw 名单');
+  assert.strictEqual(out.rules.filter((r) => r.startsWith('RULE-SET,up-gfw,')).length, 0, '默认不启用 gfw 名单');
 
-  // rule-providers 已注入
+  // rule-providers 已注入（上游 + AI）
   assert.ok(out['rule-providers'], '应注入 rule-providers');
-  ['up-private', 'up-reject', 'up-direct', 'up-gfw'].forEach((name) => {
+  ['up-private', 'up-reject', 'up-direct', 'up-gfw', 'ai-chat'].forEach((name) => {
     assert.ok(out['rule-providers'][name], '缺少 provider: ' + name);
     assert.strictEqual(out['rule-providers'][name].behavior, 'domain', name + ' 应为 domain 行为');
     assert.strictEqual(out['rule-providers'][name].interval, 86400, name + ' 应每天刷新');
@@ -89,30 +124,37 @@ const keysOf = (rules) => rules.map((r) => r.split(',').slice(0, 2).join(',').to
   assert.ok(out.rules.includes('GEOIP,CN,DIRECT'), '订阅原有规则必须保留');
 
   // 不覆盖订阅已有的 rule-providers
-  const merged = main({ 'rule-providers': { mine: { type: 'inline', payload: [] } }, rules: [] });
+  const merged = main({
+    'rule-providers': { mine: { type: 'inline', payload: [] } },
+    'proxy-groups': [{ name: 'PROXY', type: 'select', proxies: ['node-a'] }],
+    rules: [],
+  });
   assert.ok(merged['rule-providers'].mine, '不应覆盖订阅自带的 rule-providers');
   assert.ok(merged['rule-providers']['up-direct'], '应合并上游名单');
+  assert.ok(merged['rule-providers']['ai-chat'], '应合并 AI 名单');
 }
 
-// ==================== 场景 2：关闭上游名单（纯内联） ====================
+// ==================== 场景 2：关闭上游名单（纯内联 + AI） ====================
 {
   const { main } = load({ ENABLE_PROVIDERS: false });
   const out = main(makeConfig());
 
-  assert.strictEqual(out['rule-providers'], undefined, '关闭时不应注入 rule-providers');
+  assert.strictEqual(out['rule-providers']['up-direct'], undefined, '关闭时不应注入上游 rule-providers');
+  assert.ok(out['rule-providers']['ai-chat'], 'AI 名单与上游开关无关，应仍然注入');
   assert.strictEqual(out.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '首条应为自定义规则');
   assert.strictEqual(
-    out.rules.filter((r) => r.startsWith('RULE-SET,')).length,
+    out.rules.filter((r) => r.startsWith('RULE-SET,up-')).length,
     0,
-    '关闭时不应有 RULE-SET 规则'
+    '关闭时不应有上游 RULE-SET 规则'
   );
+  assert.ok(out.rules.some((r) => r.startsWith('RULE-SET,ai-chat,')), 'AI 名单规则仍应存在');
   assert.strictEqual(out.rules[out.rules.length - 1], 'MATCH,PROXY', 'MATCH 必须保留在最后');
 }
 
 // ==================== 场景 3：gfw 名单的出口组解析 ====================
 {
   const { main } = load({ ENABLE_GFW_SET: true });
-  // 有 select 组 → 自动取组名
+  // 有 select 组 → 自动取组名（此时 AI 组也在，pickProxyGroup 仍取原组，稳定）
   const out = main(makeConfig([{ name: '🎯 手动', type: 'select', proxies: ['node-a'] }]));
   assert.ok(
     out.rules.includes('RULE-SET,up-gfw,🎯 手动'),
@@ -129,13 +171,49 @@ const keysOf = (rules) => rules.map((r) => r.split(',').slice(0, 2).join(',').to
   assert.strictEqual(empty.rules[empty.rules.length - 1], 'MATCH,PROXY', 'MATCH 必须保留在最后');
 }
 
-// ==================== 场景 4：异常输入 ====================
+// ==================== 场景 4：AI 层的各种开关组合 ====================
+{
+  // 只留 AI 组、关掉 AI 名单 → 只有内联 DOMAIN-SUFFIX
+  const noList = load({ ENABLE_AI_PROVIDER: false }).main(makeConfig());
+  assert.strictEqual(noList['rule-providers']['ai-chat'], undefined, '关掉名单时不应注入 ai-chat');
+  assert.strictEqual(noList.rules.filter((r) => r.startsWith('RULE-SET,ai-chat')).length, 0, '关掉名单时不应有 RULE-SET');
+  assert.ok(noList.rules.indexOf('DOMAIN-SUFFIX,chatgpt.com,' + AI) > -1, '内联 AI 规则仍应存在');
+  assert.strictEqual(noList['proxy-groups'][0].name, AI, 'AI 组仍应创建');
+
+  // 关掉 AI 组、留名单 → 规则直接指向原策略组，不创建新组
+  const noGroup = load({ ENABLE_AI_GROUP: false }).main(makeConfig());
+  assert.strictEqual(noGroup['proxy-groups'].length, 1, '关闭 AI 组时不应新增组');
+  assert.strictEqual(noGroup['proxy-groups'][0].name, 'PROXY', '原组保持不变');
+  assert.ok(noGroup.rules.includes('RULE-SET,ai-chat,PROXY'), 'AI 规则应回落到原策略组');
+  assert.ok(noGroup.rules.indexOf('DOMAIN-SUFFIX,chatgpt.com,PROXY') > -1, '内联 AI 规则回落到原组');
+
+  // 订阅自带同名 AI 组 → 复用，不重复创建
+  const own = load().main(
+    makeConfig([{ name: AI, type: 'select', proxies: ['node-a'] }, { name: 'PROXY', type: 'select', proxies: ['node-a'] }])
+  );
+  assert.strictEqual(own['proxy-groups'].filter((g) => g.name === AI).length, 1, '不应重复创建同名 AI 组');
+  assert.ok(own.rules.includes('RULE-SET,ai-chat,' + AI), '应复用订阅自带的 AI 组');
+
+  // 订阅用 proxy-providers（config.proxies 为空）→ 组只由组名构成，不报错
+  const noNodes = makeConfig();
+  delete noNodes.proxies;
+  const p = load().main(noNodes);
+  assert.ok(p['proxy-groups'][0].proxies.indexOf('PROXY') > -1, '无节点时应至少能跟随原组');
+  assert.ok(p['proxy-groups'][0].proxies.indexOf('DIRECT') > -1, '无节点时应保留 DIRECT');
+}
+
+// ==================== 场景 5：异常输入 ====================
 {
   const { main } = load();
   assert.strictEqual(main(null), null, 'null 输入应原样返回');
   assert.strictEqual(main(undefined), undefined, 'undefined 输入应原样返回');
   assert.ok(main({}).rules.length > 0, '空配置也应只输出自有规则');
   assert.ok(main({ rules: [] }).rules.length > 0, '空 rules 也应正常注入');
+
+  // 没有 proxy-groups → AI 层跳过，但不能崩、不能产生指向空组的规则
+  const noGroups = main({ rules: ['MATCH,PROXY'] });
+  assert.strictEqual(noGroups.rules.filter((r) => r.indexOf(AI) > -1).length, 0, '没有组时不应生成 AI 规则');
+  assert.strictEqual(noGroups.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '自定义直连仍应生效');
 }
 
-console.log('✓ 全部断言通过（4 个场景）');
+console.log('✓ 全部断言通过（5 个场景）');
