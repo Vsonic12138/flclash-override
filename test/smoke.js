@@ -69,8 +69,9 @@ const AI = '🤖 AI 网站';
   assert.strictEqual(members[members.length - 1], 'DIRECT', 'AI 组应保留 DIRECT 选项');
   assert.ok(members.includes('node-a'), 'AI 组应包含订阅节点');
 
-  // 自定义层仍是最前
-  assert.strictEqual(out.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '首条应为自定义规则');
+  // 自定义层仍是最前（进程直连规则在最前，其后是域名直连）
+  assert.ok(out.rules[0].indexOf('PROCESS-NAME,') === 0, '进程直连规则应排在最前');
+  assert.strictEqual(out.rules[4], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '进程规则之后紧接着自定义域名规则');
 
   // AI 层存在且排在订阅规则之前
   const aiSet = out.rules.indexOf('RULE-SET,ai-chat,' + AI);
@@ -91,7 +92,7 @@ const AI = '🤖 AI 网站';
   assert.ok(aiSet < ms, 'AI 名单必须排在订阅规则之前');
 
   // AI 层排在自定义直连之后（自定义直连优先级最高）
-  assert.ok(out.rules[0] === 'DOMAIN-SUFFIX,easyeda.com,DIRECT' && copilot > 0, '顺序应为 自定义直连 → AI');
+  assert.ok(out.rules.indexOf('DOMAIN-SUFFIX,easyeda.com,DIRECT') === 4 && copilot > 0, '顺序应为 自定义直连 → AI');
 
   // 上游层顺序：private → reject → direct
   const at = (rule) => out.rules.indexOf(rule);
@@ -141,7 +142,7 @@ const AI = '🤖 AI 网站';
 
   assert.strictEqual(out['rule-providers']['up-direct'], undefined, '关闭时不应注入上游 rule-providers');
   assert.ok(out['rule-providers']['ai-chat'], 'AI 名单与上游开关无关，应仍然注入');
-  assert.strictEqual(out.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '首条应为自定义规则');
+  assert.strictEqual(out.rules[4], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '进程规则之后应为自定义域名规则');
   assert.strictEqual(
     out.rules.filter((r) => r.startsWith('RULE-SET,up-')).length,
     0,
@@ -236,7 +237,14 @@ const AI = '🤖 AI 网站';
   // 没有 proxy-groups → AI 层跳过，但不能崩、不能产生指向空组的规则
   const noGroups = main({ rules: ['MATCH,PROXY'] });
   assert.strictEqual(noGroups.rules.filter((r) => r.indexOf(AI) > -1).length, 0, '没有组时不应生成 AI 规则');
-  assert.strictEqual(noGroups.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '自定义直连仍应生效');
+  assert.strictEqual(noGroups.rules[4], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '自定义直连仍应生效');
+
+  // 进程直连规则（UU远程等）必须存在且在最前
+  const proc = noGroups.rules.filter((r) => r.indexOf('PROCESS-NAME,') === 0);
+  assert.ok(proc.length >= 4, '应有 UU远程 的进程直连规则');
+  assert.strictEqual(proc[0], 'PROCESS-NAME,GameViewer.exe,DIRECT', 'GameViewer.exe 应强制直连');
+  // 进程规则不能指向代理组
+  assert.ok(proc.every((r) => r.slice(-7) === ',DIRECT'), '进程规则必须是 DIRECT');
 }
 
 console.log('✓ 全部断言通过（6 个场景）');

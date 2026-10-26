@@ -8,7 +8,7 @@ FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到�
 
 ```
 覆写脚本（一个，所有订阅共用）
-├─ ① 自定义直连层（内联，33 条）    嘉立创 / 立创 / 飞书 / 字节 / B站  → DIRECT
+├─ ① 自定义直连层（内联 39 域 + 4 进程）  嘉立创 / 立创 / 飞书 / 字节 / B站 / UU远程 → DIRECT
 ├─ ② AI 层（内联 80 条 + 引用 204 条）  AI 域名 → 🤖 AI 网站（自动新建的策略组）
 ├─ ③ 上游层（rule-providers 引用）  Loyalsoldier/clash-rules ★28.9k 日更
 │     private → DIRECT / reject → REJECT / direct → DIRECT
@@ -53,6 +53,7 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 | 飞书 / Lark | feishu.cn、feishu.net、feishucdn.com、larksuite.com、larkoffice.com | 直连 |
 | 字节 / 豆包 | doubao.com、snssdk.com、bytedance.com、bytedns1.com、bytescm.com、ibytedapm.com、byteimg.com、pstatp.com | 直连 |
 | B 站 | bilibili.com、bilivideo.com、bilivideo.cn、biliapi.net、hdslb.com、b23.tv、akamaized.net | 直连 |
+| 网易 UU远程 | nrd.nie.163.com（API 与信令）、nie.163.com、webapp.163.com、uu.163.com、easebar.com，**外加进程规则** `GameViewer.exe` 等 4 个进程全部直连 | 直连 |
 
 这些域名里，`lcsc.com` / `jlcpcb.com` / `easyeda.com` 解析到 CloudFront，GeoIP 判定为境外，机场的 `GEOIP,CN,DIRECT` 命中不了，于是落到 `MATCH` 走代理。实测：
 
@@ -64,6 +65,8 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 | www.lcsc.com | 885ms | 847ms |
 
 走代理纯烧流量，而且这些站要登录/下单，出口 IP 是境外节点容易触发风控。B 站则是全站直连（含直播流 `*.bilivideo.com`），看视频不消耗代理流量。
+
+**为什么 UU远程额外加了进程规则**：远控的画面中转可能直接连任意中转 IP（不看域名），光靠域名拦不住；`PROCESS-NAME,GameViewer.exe,DIRECT` 让这个进程的全部流量（含 UDP）无条件直连，比域名规则更彻底。实测启动 UU远程 后，`api-ipv4.nrd.nie.163.com`、`sig-3207-b.nrd.nie.163.com`（信令）都是 DIRECT，没有一条走代理。
 
 ## AI 层：自动建一个「🤖 AI 网站」组
 

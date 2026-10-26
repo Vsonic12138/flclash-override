@@ -137,13 +137,31 @@ const DIRECT_DOMAINS = [
   'biliapi.net',
   'hdslb.com',
   'b23.tv',
+
+  // —— 网易 UU远程（远控要是走代理，画面会卡、鼠标延迟高，严重的直接连不上）——
+  'nrd.nie.163.com',   // 主 API + 信令（api.nrd / sig-xxxx.nrd）
+  'nie.163.com',
+  'webapp.163.com',    // 登录页 / 充值页 / 云设备页
+  'uu.163.com',
+  'easebar.com',       // 统计（fcount-api.webapp.easebar.com）
 ];
 
 if (DIRECT_AKAMAI) {
   DIRECT_DOMAINS.push('akamaized.net');
 }
 
-const CUSTOM_RULES = DIRECT_DOMAINS.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`);
+// 强制直连的进程：不看域名、不看 GeoIP，这个进程的全部流量都直连
+// （UU远程的视频中转可能直连任意中转 IP，靠域名拦不住，用进程规则最稳）
+const DIRECT_PROCESSES = [
+  'GameViewer.exe',
+  'GameViewerService.exe',
+  'GameViewerServer.exe',
+  'GameViewerHealthD.exe',
+];
+
+const PROCESS_RULES = DIRECT_PROCESSES.map((name) => `PROCESS-NAME,${name},DIRECT`);
+
+const CUSTOM_RULES = PROCESS_RULES.concat(DIRECT_DOMAINS.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`));
 
 // ============ ② AI 层 ============
 // 策略组名：FlClash 界面里会显示在最上面
