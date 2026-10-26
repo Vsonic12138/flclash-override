@@ -202,6 +202,29 @@ const AI = '🤖 AI 网站';
   assert.ok(p['proxy-groups'][0].proxies.indexOf('DIRECT') > -1, '无节点时应保留 DIRECT');
 }
 
+// ==================== 场景 6：AI 偏好节点（DMIT2）置顶 ====================
+{
+  const cfg = makeConfig();
+  cfg.proxies = [
+    { name: 'node-a', type: 'ss', server: 'a.example.com', port: 8388 },
+    { name: '[vless]美国|家宽|DMIT2|移动|联通|x6', type: 'vless', server: 'b.example.com', port: 443 },
+    { name: 'node-c', type: 'ss', server: 'c.example.com', port: 8388 },
+  ];
+  const out = load().main(cfg);
+  const members = out['proxy-groups'][0].proxies;
+  assert.strictEqual(
+    members[0],
+    '[vless]美国|家宽|DMIT2|移动|联通|x6',
+    '偏好节点的应排在 AI 组第一位（订阅更新后默认仍落回它）'
+  );
+  assert.ok(members.indexOf('PROXY') > -1, '置顶后仍保留跟随主组的选项');
+  assert.strictEqual(members[members.length - 1], 'DIRECT', 'DIRECT 仍应保留在最后');
+
+  // 没有命中关键字的节点 → 回到「跟随主组」的老行为
+  const plain = load().main(makeConfig());
+  assert.strictEqual(plain['proxy-groups'][0].proxies[0], 'PROXY', '无匹配节点时应默认跟随主组');
+}
+
 // ==================== 场景 5：异常输入 ====================
 {
   const { main } = load();
@@ -216,4 +239,4 @@ const AI = '🤖 AI 网站';
   assert.strictEqual(noGroups.rules[0], 'DOMAIN-SUFFIX,easyeda.com,DIRECT', '自定义直连仍应生效');
 }
 
-console.log('✓ 全部断言通过（5 个场景）');
+console.log('✓ 全部断言通过（6 个场景）');

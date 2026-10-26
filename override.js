@@ -149,6 +149,11 @@ const CUSTOM_RULES = DIRECT_DOMAINS.map((domain) => `DOMAIN-SUFFIX,${domain},DIR
 // 策略组名：FlClash 界面里会显示在最上面
 const AI_GROUP = '🤖 AI 网站';
 
+// AI 出口偏好：成员名里包含这个关键字(不区分大小写)的节点会排到组内第一位，
+// 于是订阅每天更新后即便选择被重置，默认也会落回它（想要"纯家宽出口跑 AI"就填关键字）
+// 留空 '' = 默认跟随主组
+const AI_PREFERRED_NODE = 'DMIT2';
+
 // 内联补充清单（补上游 AI 名单没覆盖到的站点；已覆盖的重复添加无副作用）
 // 覆盖范围：OpenAI / ChatGPT / Sora / Gemini / NotebookLM / Claude / Copilot /
 //          Grok & x.ai / Perplexity / Mistral / Cohere / Groq / HuggingFace /
@@ -287,7 +292,7 @@ function pickProxyGroup(config) {
  * 确保存在「🤖 AI 网站」策略组：
  * - 订阅里已有同名组 → 直接复用（尊重机场自己的编排）
  * - 没有 → 在最前面插入一个 select 组，成员 = 原策略组 + 所有节点 + DIRECT
- *   默认选中第一个（= 原策略组，即「跟随主组」），想单独给 AI 固定节点时在界面里改即可
+ *   默认选中第一个：命中 AI_PREFERRED_NODE 关键字的节点优先，没有命中则= 原策略组（跟随主组）
  * 返回可用于规则出口的组名，无法创建时返回 null
  */
 function ensureAiGroup(config, primary) {
@@ -324,6 +329,20 @@ function ensureAiGroup(config, primary) {
     return null;
   }
   add('DIRECT');
+
+  // 4) 偏好节点置顶 → 订阅更新/选择被重置后，AI 默认仍走它
+  if (AI_PREFERRED_NODE) {
+    const keyword = String(AI_PREFERRED_NODE).toLowerCase();
+    const nodeNames = (Array.isArray(config.proxies) ? config.proxies : [])
+      .map((proxy) => proxy && proxy.name)
+      .filter((name) => typeof name === 'string' && name);
+    const preferred = nodeNames.filter((name) => name.toLowerCase().indexOf(keyword) !== -1)[0];
+    const index = preferred ? candidates.indexOf(preferred) : -1;
+    if (index > 0) {
+      candidates.splice(index, 1);
+      candidates.unshift(preferred);
+    }
+  }
 
   groups.unshift({ name: AI_GROUP, type: 'select', proxies: candidates });
   return AI_GROUP;

@@ -71,7 +71,7 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 
 现在脚本会：
 
-1. 在最前面插入策略组 **`🤖 AI 网站`**（`select`），成员 = 原主策略组 + 所有节点 + `DIRECT`，**默认选中第一项「跟随原主组」**，所以不额外操作时行为和以前完全一致；
+1. 在最前面插入策略组 **`🤖 AI 网站`**（`select`），成员 = 原主策略组 + 所有节点 + `DIRECT`，**默认选中命中 `AI_PREFERRED_NODE` 关键字的节点**（默认 `DMIT2`；没有匹配时才「跟随原主组」，行为与以前一致）；
 2. 把 AI 域名全部指向这个组，且排在订阅的 `microsoft.com → DIRECT` 之类规则**之前**，堵住类似漏洞；
 3. 名单双层：内联 80 条精准域名 + 引用 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 的 `category-ai-chat-!cn`（204 条，24 小时自动刷新）。
 
@@ -92,6 +92,14 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 上游名单还额外覆盖了 notebooklm、antigravity、claudemcp、deepwiki、grok.x.com、manus、sider、coderabbit、comfyui、trae、marscode 等 200 多个域名。
 
 **想给 AI 单独固定节点**：FlClash → 代理 → `🤖 AI 网站` → 选一个美国/日本节点。这样其它流量仍走主组，AI 用固定出口，主组换节点也不会把 AI 带偏。
+
+**让它"默认就选中某个节点"**（更省心，订阅每天更新也不会把选择冲掉）：改脚本顶部的
+
+```js
+const AI_PREFERRED_NODE = 'DMIT2';   // 换成你想要的节点名关键字，留空 '' 则跟随主组
+```
+
+命中关键字的节点会被排到 `🤖 AI 网站` 组成员的第一位，而 select 组的默认选择就是第一位 —— 所以每次订阅更新、每次重新应用配置，AI 都会自动落在这个节点上。目前设的是 `DMIT2`（实测唯一能稳定连 ChatGPT 的家宽出口，约 1.3 秒握手）。
 
 ## 快速开始
 
@@ -118,6 +126,7 @@ config.rules = ['RULE-SET,up-direct,DIRECT', ...config.rules];
 | `APPLY_DNS` | `false` | 顺带修 DNS：`fallback-lazy-query: true`、补全 `fake-ip-filter`、`listen` 收回到 `127.0.0.1:1053`。**界面里自己调 DNS 就保持 `false`** |
 | `ENABLE_AI_GROUP` | `true` | 创建「🤖 AI 网站」策略组（订阅已有同名组则直接复用，不会重复创建）。关掉后 AI 规则回落到原主策略组 |
 | `ENABLE_AI_PROVIDER` | `true` | 引用 MetaCubeX 的 `category-ai-chat-!cn` 名单（204 条，日更）。关掉后只用内联的 80 条 |
+| `AI_PREFERRED_NODE` | `'DMIT2'` | AI 组默认落点。成员名命中该关键字的节点排到第一位并被默认选中，订阅更新后也不会被重置。留空 `''` 则跟随主组 |
 
 ## 修改规则
 
@@ -149,7 +158,7 @@ const AI_DOMAINS = [
 node test/smoke.js
 ```
 
-5 个场景：AI 组 + 上游名单全开 / 关闭上游名单 / gfw 出口组自动探测 / AI 层开关组合（含订阅自带同名组复用、无节点只有组名）/ 异常输入。校验节点是否原样保留、AI 组是否跟随主组、`copilot` 是否排在 `microsoft.com` 直连之前、四层顺序、规则去重、`MATCH` 是否还在最后。推送时 GitHub Actions 会自动跑一遍。
+6 个场景：AI 组 + 上游名单全开 / 关闭上游名单 / gfw 出口组自动探测 / AI 层开关组合（含订阅自带同名组复用、无节点只有组名）/ AI 偏好节点置顶 / 异常输入。校验节点是否原样保留、AI 组是否跟随主组、`copilot` 是否排在 `microsoft.com` 直连之前、四层顺序、规则去重、`MATCH` 是否还在最后。推送时 GitHub Actions 会自动跑一遍。
 
 ## 常见问题
 
