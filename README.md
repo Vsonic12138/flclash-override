@@ -114,16 +114,22 @@ const AI_PREFERRED_NODES = [
 
 ### Gemini / Google 的额外注意点
 
-Gemini 除了 `gemini.google.com`（已覆盖），实际还会用到这些**目前走主组**的域名：
+Gemini 会在**同一次会话**里同时请求页面、登录态、图片和后端 API。如果这些域名有的走 AI 组、有的走主组，且两个组出口国家不同（例如 AI 组在美国、主组在新加坡），Google 就会看到两套 IP，很容易判成「地区不可用」或异常流量。
 
-| 域名 | 用途 | 当前出口 |
-| --- | --- | --- |
-| `accounts.google.com` | 登录 / OAuth | 主组 |
-| `alkalimakersuite-pa.clients6.google.com` | Gemini 后端 API | 主组 |
-| `lh3.googleusercontent.com` | 生成的图片 / 头像 | 主组 |
-| `content-push.googleapis.com` | 推送 | 主组 |
+所以下面这几个已经统一收进 `🤖 AI 网站`：
 
-如果 AI 组和主组**出口国家不同**（例如 AI 组在美国、主组在新加坡），Google 会在同一次会话里看到两套 IP，很容易判成「地区不可用」或异常流量。**最稳的做法是让主组和 AI 组同国**，这比逐个补域名更彻底。
+| 域名 | 用途 |
+| --- | --- |
+| `accounts.google.com` | 登录 / OAuth |
+| `clients6.google.com` | Gemini 后端 API（含 `alkalimakersuite-pa.clients6.google.com`） |
+| `lh3.googleusercontent.com` | 生成的图片 / 头像 |
+| `lh3.google.com` | 静态资源 |
+
+> 代价：Gmail / Drive / YouTube 的登录态也会走 AI 节点。如果 AI 节点挂了，Google 登录会一起受影响 —— 这是用一致性换可用性的取舍。
+
+仍然走主组的 Google 域名（影响很小，因为不参与 Gemini 的地区判定）：`www.google.com`、`googleapis.com`（通用 API）、`content-push.googleapis.com`（推送）、`gstatic.com`（纯静态）。
+
+即便如此，**让主组和 AI 组保持同国仍然是最稳的**：这样即使有漏网的 Google 域名，Google 看到的 IP 也属于同一个国家。
 
 另外节点本身也要过 Google 的检查。实测赔钱机场（同一时刻、同一台机器）：
 

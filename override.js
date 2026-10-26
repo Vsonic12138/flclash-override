@@ -193,6 +193,16 @@ const AI_DOMAINS = [
   'oaiusercontent.com',
   'sora.com',
 
+  // —— Google 账号 / 静态资源：必须和 Gemini 同一条出口 ——
+  // Gemini 会在同一次会话里同时请求页面（gemini.google.com）和登录态、图片、
+  // 后端 API。如果这些域名走主组、而 gemini 走 AI 组，Google 会看到两套 IP，
+  // 容易判成「地区不可用」或异常流量，所以这里统一切到 AI 组。
+  // 代价：Gmail / Drive / YouTube 的登录态也走 AI 节点。
+  'accounts.google.com',
+  'clients6.google.com',
+  'lh3.googleusercontent.com',
+  'lh3.google.com',
+
   // —— 补 Google 系 ——
   'gemini.google.com',
   'aistudio.google.com',

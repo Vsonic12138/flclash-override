@@ -49,6 +49,16 @@ function makeConfig(groups) {
 const keysOf = (rules) => rules.map((r) => r.split(',').slice(0, 2).join(',').toLowerCase());
 const AI = '🤖 AI 网站';
 
+// Gemini 依赖的 Google 账号/静态/后端域名必须和 gemini 走同一条出口，
+// 否则 Google 会同时看到两个国家的 IP，判成「地区不可用」。
+const GOOGLE_WITH_AI = [
+  'accounts.google.com',
+  'clients6.google.com',
+  'lh3.googleusercontent.com',
+  'lh3.google.com',
+  'gemini.google.com',
+];
+
 // ==================== 场景 1：默认（AI 组 + 上游名单都开） ====================
 {
   const { main } = load();
@@ -133,6 +143,25 @@ const AI = '🤖 AI 网站';
   assert.ok(merged['rule-providers'].mine, '不应覆盖订阅自带的 rule-providers');
   assert.ok(merged['rule-providers']['up-direct'], '应合并上游名单');
   assert.ok(merged['rule-providers']['ai-chat'], '应合并 AI 名单');
+}
+
+// ==================== 场景 1.5：Google 域名必须跟随 AI 组 ====================
+{
+  const cfg = makeConfig();
+  const out = load().main(cfg);
+  for (const domain of GOOGLE_WITH_AI) {
+    const rule = out.rules.find((r) => r.startsWith(`DOMAIN-SUFFIX,${domain},`));
+    assert.ok(rule, `${domain} 应有显式规则`);
+    assert.strictEqual(
+      rule.split(',').slice(2).join(','),
+      AI,
+      `${domain} 必须走 AI 组（否则 Gemini 会看到两套国家的 IP）`
+    );
+  }
+  // 必须排在订阅自带的 Google 直连/主组规则之前
+  const geminiIdx = out.rules.findIndex((r) => r.startsWith('DOMAIN-SUFFIX,gemini.google.com,'));
+  const accountsIdx = out.rules.findIndex((r) => r.startsWith('DOMAIN-SUFFIX,accounts.google.com,'));
+  assert.ok(accountsIdx < geminiIdx, 'accounts 规则应紧邻并排在 gemini 之前');
 }
 
 // ==================== 场景 2：关闭上游名单（纯内联 + AI） ====================
@@ -262,4 +291,4 @@ const AI = '🤖 AI 网站';
   assert.ok(proc.every((r) => r.slice(-7) === ',DIRECT'), '进程规则必须是 DIRECT');
 }
 
-console.log('✓ 全部断言通过（6 个场景）');
+console.log('✓ 全部断言通过（7 个场景）');
