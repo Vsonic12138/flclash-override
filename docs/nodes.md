@@ -111,3 +111,34 @@ curl --proxy http://127.0.0.1:7890 --noproxy '' --ssl-no-revoke -sS -o NUL -D - 
 1. 主组和 AI 组出口国家不一致时，Google 会看到两套 IP → 地区不可用。
 2. 能连 ChatGPT ≠ 能过 Gemini，必须分别验证。
 3. 节点状态会漂移，发现异常先复测，别急着改配置。
+
+## 2026-10-27 00:56 夜间复测（切到自建合成订阅之后）
+
+背景：FlClash 里大量节点卡片显示 `Timeout`，怀疑是新订阅有问题。结论：**订阅本身没问题，Timeout 大部分是探测口径造成的假阴性。**
+
+| 检查项 | 结果 |
+| --- | --- |
+| 订阅内容 | 9 个策略组 / 71 节点 / 9075 规则 / 5 个 rule-provider，首条 `PROCESS-NAME,GameViewer.exe,DIRECT`，末尾 `MATCH,🐟漏网之鱼` ✅ |
+| AI 组默认 | `🇺🇸美国圣何塞03-0.1倍` 置顶（`AI_PREFERRED_NODES` 生效）✅ |
+| 204 探测 | 73 个节点中 43 个通过（`www.gstatic.com/generate_204`，4s 超时） |
+| 真实请求 | 被 UI 标 `Timeout` 的 `圣何塞03-0.1倍` 通过 `POST chatgpt.com/backend-api/codex/responses`（401=正常），能出网 |
+
+**教训**：mihomo 的 `/proxies/<name>/delay` 与界面延迟测试只说明「到那个探测 URL 的 TTFB」，不是「节点能不能用」。0.1 倍节点是共享带宽，凌晨可能被限到探测超时，真实流量仍然通。排查顺序应该是：先看真实请求（下面「怎么测」），不要被红色 Timeout 带跑。
+
+**当下的真问题（Google 侧）**：经 `圣何塞03-0.1倍`、`圣何塞07 | 三网推荐`、`美国06-0.1倍` 三个不同出口 IP 访问 `https://gemini.google.com/app`，全部 `302 → www.google.com/sorry/index`（跟随后 `429`）。三个 IP 一样的结果说明是 Google 对数据中心 IP 的风控/限流，不是本地配置或机场线路问题。Antigravity 报 “not eligible for this account/region” 时，先按这个方向验证：换出口 IP、或用真实浏览器会话（带 cookie）复测，再怀疑账号本身。
+
+出口 IP 抽样（`chatgpt.com/cdn-cgi/trace`）：
+
+| 节点 | 出口 IP |
+| --- | --- |
+| `圣何塞01/03/05 | 三网推荐`、`洛杉矶08 | 三网推荐` | 207.32.218.89 |
+| `圣何塞07 | 三网推荐` | 207.32.216.109 |
+| `美国06-0.1倍` | 162.251.162.203 |
+
+快速筛节点（不打扰主选择器时用 AI 组，或临时切 `🚀节点选择` 后记得切回 `♻️自动选择`）：
+
+```bash
+curl -s "http://127.0.0.1:9090/proxies/$(node -pe "encodeURIComponent('🚀节点选择')")/delay?timeout=6000&url=$(node -pe "encodeURIComponent('https://gemini.google.com/')")"
+```
+
+注意：状态切换要用**文件 + `--data-binary`** 发 PUT，直接 `--data '{"name":"中文"}'` 在 Git Bash 下会被转义破坏，报 `Selector update error: proxy not exist`。
