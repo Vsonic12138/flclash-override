@@ -31,6 +31,7 @@ FlClash ──https──> Caddy :443 ──> Sub-Store 后端 127.0.0.1:13000
 docker run -d --name substore --restart unless-stopped \
   -e SUB_STORE_BACKEND_MERGE=true \
   -e SUB_STORE_FRONTEND_BACKEND_PATH=/<后端路径> \
+  -e SUB_STORE_CORS_ALLOWED_ORIGINS=https://sub.<你的域名> \
   -p 127.0.0.1:13001:3001 -p 127.0.0.1:13000:3000 \
   -v /opt/substore-stack/data:/opt/app/data \
   xream/sub-store:latest
@@ -58,7 +59,8 @@ DNS 必须是**灰色云（仅 DNS）A 记录**指到 VPS。橙云会让 Let's E
 
 | 用途 | 地址 |
 | --- | --- |
-| 管理后台 | `https://sub.<你的域名>/`，首次打开填后端地址 `https://sub.<你的域名>/<后端路径>` |
+| 管理后台（推荐书签）| `https://sub.<你的域名>/?magicpath=<后端路径去掉开头的 />`，打开即连上后端 |
+| 管理后台（裸地址）| `https://sub.<你的域名>/`，会弹窗让你填后端地址 `https://sub.<你的域名>/<后端路径>` |
 | FlClash 订阅 | `https://sub.<你的域名>/<后端路径>/download/collection/merge/ClashMeta` |
 | 健康检查 | `https://sub.<你的域名>/<后端路径>/api/collections` |
 
@@ -74,6 +76,8 @@ DNS 必须是**灰色云（仅 DNS）A 记录**指到 VPS。橙云会让 Let's E
 | 前缀脚本加在「集合」上 | 会误伤其它来源、且拼接后重复加前缀。要加在**每条订阅**上 |
 | 集合名用中文 | 订阅 URL 里要 URL 编码，容易出错，用 ASCII（`merge`） |
 | 橙云 + Caddy | ACME 验证被 Cloudflare 截走，必须灰云 |
+| 后台打开一片白，或狂弹 `403 CORS origin not allowed` | 后端默认只允许 `sub-store.vercel.app` 等几个源，自己的域名要加进 `SUB_STORE_CORS_ALLOWED_ORIGINS` |
+| 直接开裸地址一片白 | 前端在等后端地址；用 `?magicpath=` 的书签链接，或强刷 `Ctrl+F5` 后填一次 |
 
 ## 换密码（后端路径）
 
