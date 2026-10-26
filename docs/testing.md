@@ -31,3 +31,11 @@ node test/verify-pipeline.js /path/to/profile.json
 ## 新增断言的约定
 
 改 `override.js` 的行为时必须同步补 smoke 断言，并且**用负向测试确认断言真的会失败**（临时删掉一条规则，看 `node test/smoke.js` 是否报错）。只加断言不验证其有效性，很容易写出永远为真的测试。
+
+## composer（服务器端合成）
+
+```bash
+cd composer && npm i && node test.js
+```
+
+9 项离线断言：合并结果解析（含「只有空 proxies 时必须报错」负向用例）、重名去重、分组折叠、无 override.js 时补建组、新节点补组、校验器三类拦截（悬空引用 / provider 缺失 / 节点重名）。CI 里是独立 job `composer`，**不联网**。

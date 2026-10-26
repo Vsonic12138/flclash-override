@@ -15,3 +15,18 @@ jobs:
           node-version: '20'
       - name: 冒烟测试
         run: node test/smoke.js
+
+  composer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 安装依赖
+        run: npm ci --omit=dev --prefix composer
+        env:
+          npm_config_registry: https://registry.npmmirror.com
+      - name: composer 单测
+        run: node test.js
+        working-directory: composer

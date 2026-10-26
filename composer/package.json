@@ -1,0 +1,14 @@
+{
+  "name": "dgc-composer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "大狗叫订阅：机场完整配置 + Sub-Store 合并节点 + 本仓库 override.js 规则层 → 可直接订阅的完整 Clash 配置",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -11,3 +11,8 @@ submerge/config.json
 
 # 临时探查产物（节点/分组结构快照）
 pipeline-*.json
+
+# composer 运行产物 / 临时探查
+composer/data/
+composer/.probe.yaml
+.deploy/

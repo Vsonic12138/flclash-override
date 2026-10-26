@@ -28,6 +28,7 @@ FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到�
 | [节点实测记录](docs/nodes.md) | 各节点对 ChatGPT / Gemini 的实测 | 换节点、排查断连 |
 | [双订阅合并](docs/submerge.md) | 两家机场合一、家宽节点进 AI 组 | 想同时用两个机场 |
 | [服务器端合并](docs/substore.md) | Sub-Store + Caddy 部署在 VPS，一条链接多设备用 | 换设备、不想开电脑 |
+| [大狗叫订阅](docs/composer.md) | 服务器端合成：机场配置 + 合并节点 + 本仓库规则，一条链接直接订阅 | 想「订阅即带规则」 |
 | [开关与修改](docs/configuration.md) | 全部开关、加规则的方法 | 定制 |
 | [自测](docs/testing.md) | 怎么跑测试 | 改完代码 |
 | [常见问题](docs/faq.md) | FAQ | 遇到问题先看这里 |
@@ -39,6 +40,7 @@ override.js      覆写脚本（唯一产物，FlClash 直接引用）
 docs/            文档，按主题拆分
 test/smoke.js    测试，CI 自动跑
 submerge/        本地合并订阅服务（可选，见 docs/submerge.md）
+composer/        服务器端合成服务（可选，见 docs/composer.md）
 AGENTS.md        仓库约定（改代码前先读）
 ```
 
