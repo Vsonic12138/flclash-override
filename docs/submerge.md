@@ -60,3 +60,7 @@ node server.js --check 某配置.yaml                            # 只校验
 ## 为什么不用 Cloudflare Worker
 
 `worker/` 里那份已部署但不可用：`workers.dev` 在国内直连不通（解析被污染 + TLS 超时），而且赔钱机场对 Cloudflare 出口 IP 直接回 403。本地服务不依赖外网可达性，反而最稳。
+
+## 换设备怎么办
+
+`submerge/` 只服务本机。想让手机、另一台电脑都能用同一条订阅，把合并搬到自己的 VPS 上：见 [服务器端合并](substore.md)。

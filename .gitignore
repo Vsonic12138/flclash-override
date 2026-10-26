@@ -8,3 +8,6 @@ submerge/bad-config.json
 # 真实订阅链接永远不进仓库（放 %USERPROFILE%\.submerge\config.json）
 submerge/config.json
 *.last-good.yaml
+
+# 临时探查产物（节点/分组结构快照）
+pipeline-*.json

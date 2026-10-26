@@ -27,6 +27,7 @@ FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到�
 | [Gemini 注意事项](docs/gemini.md) | 为什么提示「地区不可用」 | Gemini 报错 |
 | [节点实测记录](docs/nodes.md) | 各节点对 ChatGPT / Gemini 的实测 | 换节点、排查断连 |
 | [双订阅合并](docs/submerge.md) | 两家机场合一、家宽节点进 AI 组 | 想同时用两个机场 |
+| [服务器端合并](docs/substore.md) | Sub-Store + Caddy 部署在 VPS，一条链接多设备用 | 换设备、不想开电脑 |
 | [开关与修改](docs/configuration.md) | 全部开关、加规则的方法 | 定制 |
 | [自测](docs/testing.md) | 怎么跑测试 | 改完代码 |
 | [常见问题](docs/faq.md) | FAQ | 遇到问题先看这里 |
