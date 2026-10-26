@@ -7,9 +7,10 @@
  *
  * 流程（每次重建）：
  *   1. 拉底座：BASE_URL（机场的完整 YAML，必须能被 Clash 解析）→ 提供 DNS/端口/分组/机场自带规则
- *   2. 拉节点：MERGE_URL（Sub-Store 的 /download/collection/merge 输出，只有 proxies）
+ *   2. 拉节点：SOURCES（可多个机场）/ MERGE_URL（单个 Sub-Store 合并输出），只有 proxies；
+ *      带标签的源会给节点名加「标签 * 」前缀，用来区分机场：`酷狗 * [ss]香港|家宽|砖线1`
  *   3. 用合并节点替换底座里的 proxies
- *   4. 把底座分组不认识的新节点（如 [酷狗] 前缀的）补进「🚀节点选择」「♻️自动选择」
+ *   4. 把底座分组不认识的新节点（如「酷狗 * 」前缀的）补进「🚀节点选择」「♻️自动选择」
  *   5. 跑本仓库 override.js 的 main(config)：加 rule-providers、自定义直连、AI 层、上游大名单，
  *      并把它们 prepend 到机场规则之前（与 FlClash 端覆写完全一致）
  *   6. 校验（YAML 可解析 / 节点名唯一 / 分组引用存在 / RULE-SET 引用存在）后输出
@@ -31,6 +32,7 @@ const CFG = {
   host: process.env.HOST || '127.0.0.1',
   baseUrl: process.env.BASE_URL || '',
   mergeUrl: process.env.MERGE_URL || '',
+  sources: parseSources(process.env.SOURCES || ''),
   ua: process.env.UA || 'clash-verge/v2.4.2',
   secret: (process.env.SECRET || '/dgc').replace(/\/+$/, '') || '/dgc',
   overrideFile: process.env.OVERRIDE_FILE || path.join(__dirname, 'override.js'),
@@ -44,6 +46,10 @@ const CFG = {
 const NODE_GROUPS = (process.env.NODE_GROUPS || '🚀节点选择,♻️自动选择').split(',').map((s) => s.trim()).filter(Boolean);
 const BUILTIN_TARGETS = new Set(['DIRECT', 'REJECT', 'REJECT-DROP', 'PASS', 'COMPATIBLE']);
 
+// 机场塞进来的「信息节点」（剩余流量、距离重置、套餐到期…）都是 127.0.0.1 假线路，
+// 而且各机场/缓存里数值天天变，留着会让底座分组引用到「上一版名字」而校验失败
+const INFO_NODE_RE = /^(?:[^ ]{1,12} \* )?(?:剩余流量|距离下次重置剩余|套餐到期|到期时间|剩余天数|流量重置|线路到期)\s*[:：]/;
+
 // 分组改名：机场自带组名 → 仓库 override.js 里的统一组名（避免同义组出现两份）
 // 默认把机场的「🤖AI网站」并到 override.js 的「🤖 AI 网站」
 const GROUP_ALIASES = (() => {
@@ -55,6 +61,39 @@ const GROUP_ALIASES = (() => {
   }
   return map;
 })();
+
+/**
+ * 节点源解析：`SOURCES="酷狗=<url>;<url2>;赔钱=<url3>"`
+ * - 分号分隔多个源，顺序决定去重时谁先赢（第一个源优先）
+ * - 有标签的源，节点名统一加「标签 * 」前缀：`酷狗 * [ss]香港|家宽|砖线1`
+ * - 没有标签（直接写 URL）的源保持原名，通常给「底座机场」用
+ * - 不配 SOURCES 时退回单源 MERGE_URL（向后兼容老部署）
+ */
+function parseSources(raw) {
+  return String(raw || '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (/^https?:\/\//i.test(item)) return { label: '', url: item };
+      const idx = item.indexOf('=');
+      if (idx <= 0) return { label: '', url: item };
+      return { label: item.slice(0, idx).trim(), url: item.slice(idx + 1).trim() };
+    })
+    .filter((s) => s.url);
+}
+
+/** 给一个源的所有节点加「标签 * 」前缀；label 为空则原样返回 */
+function prefixProxies(proxies, label) {
+  if (!label) return proxies;
+  const prefix = label + ' * ';
+  return proxies.map((p) => Object.assign({}, p, { name: prefix + p.name }));
+}
+
+/** 日志/诊断里不暴露订阅 token */
+function maskUrl(url) {
+  return String(url || '').replace(/\/[^/]{8,}$/, '/…');
+}
 
 const state = {
   yaml: null,
@@ -122,6 +161,27 @@ function dedupeProxies(proxies) {
     out.push(p);
   }
   return out;
+}
+
+/**
+ * 按 SOURCES 依次拉取各机场节点，带标签的源加「标签 * 」前缀，最后按名字去重。
+ * 顺序 = 优先级：第一个源（底座机场）的节点在重名时胜出。
+ */
+async function fetchProxies() {
+  const sources = CFG.sources.length ? CFG.sources : [{ label: '', url: CFG.mergeUrl }];
+  if (!sources.length || !sources[0].url) throw new Error('缺少节点源：请配置 SOURCES 或 MERGE_URL');
+
+  const all = [];
+  const per = [];
+  for (const src of sources) {
+    const text = await fetchText(src.url);
+    const proxies = prefixProxies(parseProxyText(text), src.label);
+    const prefix = src.label ? src.label + ' * ' : '';
+    per.push({ label: src.label || '', prefix, count: proxies.length, url: maskUrl(src.url) });
+    log(`节点源「${src.label || '原名'}」：${proxies.length} 个` + (prefix ? `，前缀「${prefix}」` : '，不加前缀'));
+    all.push(...proxies);
+  }
+  return { proxies: dedupeProxies(all), sources: per };
 }
 
 function loadOverrideMain() {
@@ -211,6 +271,37 @@ function injectIntoGroups(config, newNames) {
   return added;
 }
 
+/**
+ * 剔除信息节点：从 proxies 删掉，并把所有分组里对它们的引用一起清掉。
+ * 节点名可能是 `剩余流量：994.7 GB`，加了机场前缀就是 `酷狗 * 剩余流量：994.7 GB`。
+ */
+function stripInfoNodes(config) {
+  const proxies = Array.isArray(config.proxies) ? config.proxies : [];
+  const groups = Array.isArray(config['proxy-groups']) ? config['proxy-groups'] : [];
+  const removed = [];
+  config.proxies = proxies.filter((p) => {
+    const name = p && p.name ? String(p.name).trim() : '';
+    if (INFO_NODE_RE.test(name)) {
+      removed.push(name);
+      return false;
+    }
+    return true;
+  });
+
+  let refs = 0;
+  for (const g of groups) {
+    if (!g || !Array.isArray(g.proxies)) continue;
+    const kept = g.proxies.filter((n) => !INFO_NODE_RE.test(String(n).trim()));
+    refs += g.proxies.length - kept.length;
+    g.proxies = kept;
+  }
+
+  if (removed.length || refs) {
+    log(`剔除信息节点 ${removed.length} 个、分组引用 ${refs} 处` + (removed.length ? `：${removed.join('、')}` : ''));
+  }
+  return { removed, refs };
+}
+
 function validate(config) {
   const problems = [];
   const proxies = Array.isArray(config.proxies) ? config.proxies : [];
@@ -260,26 +351,37 @@ function validate(config) {
   } };
 }
 
+/**
+ * 把节点源合并进底座，顺序很重要：
+ * ① 替换 proxies ② 剔除信息节点 ③ 再算「哪些是新增节点」④ 折叠分组别名 ⑤ 新节点补进策略组。
+ * 先算新增再剔除，会把变过数值的「剩余流量：…」又补回策略组里 → 悬空引用。
+ */
+function assemble(base, merged) {
+  const beforeNames = new Set((Array.isArray(base.proxies) ? base.proxies : []).map((p) => p && p.name));
+  base.proxies = merged;
+  const info = stripInfoNodes(base);
+  const newNames = base.proxies.map((p) => p && p.name).filter((n) => n && !beforeNames.has(n));
+  const alias = applyGroupAliases(base);
+  const adds = injectIntoGroups(base, newNames);
+  return { info, alias, adds };
+}
+
 async function build() {
   if (!CFG.baseUrl) throw new Error('缺少 BASE_URL');
-  if (!CFG.mergeUrl) throw new Error('缺少 MERGE_URL');
+  if (!CFG.sources.length && !CFG.mergeUrl) throw new Error('缺少节点源：请配置 SOURCES 或 MERGE_URL');
 
   const t0 = Date.now();
   const baseText = await fetchText(CFG.baseUrl);
   const base = yaml.load(baseText);
   if (!base || typeof base !== 'object') throw new Error('底座不是 YAML 映射');
 
-  const mergeText = await fetchText(CFG.mergeUrl);
-  const merged = dedupeProxies(parseProxyText(mergeText));
-
-  const beforeNames = new Set((Array.isArray(base.proxies) ? base.proxies : []).map((p) => p.name));
-  base.proxies = merged;
+  const sourceInfo = await fetchProxies();
 
   const mainFn = loadOverrideMain();
-  const aliasInfo = applyGroupAliases(base);
-
-  const newNames = merged.map((p) => p.name).filter((n) => !beforeNames.has(n));
-  const groupAdds = injectIntoGroups(base, newNames);
+  const asm = assemble(base, sourceInfo.proxies);
+  const infoInfo = asm.info;
+  const aliasInfo = asm.alias;
+  const groupAdds = asm.adds;
 
   let config = base;
   if (mainFn) {
@@ -296,7 +398,9 @@ async function build() {
 
   const text = yaml.dump(config, { lineWidth: -1, noRefs: true, sortKeys: false });
   stats.bytes = Buffer.byteLength(text);
+  stats.sources = sourceInfo.sources;
   stats.customGroupAdds = groupAdds.length;
+  stats.infoNodes = infoInfo;
   stats.groupFolded = aliasInfo.folded;
   stats.ms = Date.now() - t0;
   stats.at = new Date().toISOString();
@@ -372,7 +476,12 @@ const server = http.createServer(async (req, res) => {
       error: state.error,
       stats: state.stats,
       cacheAgeSec: state.at ? Math.round((Date.now() - state.at) / 1000) : null,
-      sources: { baseUrl: CFG.baseUrl.replace(/\/[^/]{8,}$/, '/…'), mergeUrl: CFG.mergeUrl.replace(/\/[^/]{8,}$/, '/…') },
+      baseUrl: maskUrl(CFG.baseUrl),
+      nodeSources: (CFG.sources.length ? CFG.sources : [{ label: '', url: CFG.mergeUrl }]).map((s) => ({
+        label: s.label || '',
+        prefix: s.label ? s.label + ' * ' : '',
+        url: maskUrl(s.url),
+      })),
     }, null, 2), { 'Content-Type': 'application/json; charset=utf-8' });
   }
 
@@ -395,8 +504,20 @@ const server = http.createServer(async (req, res) => {
 if (require.main === module) {
   server.listen(CFG.port, CFG.host, () => {
     log(`listen http://${CFG.host}:${CFG.port}  订阅路径 ${CFG.secret}`);
-    if (!CFG.baseUrl || !CFG.mergeUrl) log('警告：BASE_URL / MERGE_URL 未配置，无法构建');
+    if (!CFG.baseUrl || !(CFG.sources.length || CFG.mergeUrl)) log('警告：BASE_URL / SOURCES 未配置，无法构建');
   });
 }
 
-module.exports = { build, validate, parseProxyText, dedupeProxies, injectIntoGroups, applyGroupAliases, ensureAliasTargets };
+module.exports = {
+  build,
+  validate,
+  parseProxyText,
+  parseSources,
+  prefixProxies,
+  dedupeProxies,
+  injectIntoGroups,
+  applyGroupAliases,
+  ensureAliasTargets,
+  stripInfoNodes,
+  assemble,
+};

@@ -2,16 +2,20 @@
 /**
  * composer 的离线单元测试（不联网）：
  *   node test.js
- * 覆盖：合并结果解析、重名去重、分组折叠、新节点补组、校验器能否抓到悬空引用。
+ * 覆盖：合并结果解析、重名去重、分组折叠、新节点补组、信息节点剔除、校验器能否抓到悬空引用。
  */
 
 const assert = require('assert');
 const {
   parseProxyText,
+  parseSources,
+  prefixProxies,
   dedupeProxies,
   injectIntoGroups,
   applyGroupAliases,
   ensureAliasTargets,
+  stripInfoNodes,
+  assemble,
   validate,
 } = require('./server');
 
@@ -84,6 +88,35 @@ ok('没有 override.js 时会补建被折叠的组', () => {
   assert.deepStrictEqual(problems, []);
 });
 
+ok('节点源解析：标签=URL 与裸 URL 混写，顺序即优先级', () => {
+  assert.deepStrictEqual(parseSources('酷狗=http://a/x; http://b/y ;赔钱=https://c/z?token=1'), [
+    { label: '酷狗', url: 'http://a/x' },
+    { label: '', url: 'http://b/y' },
+    { label: '赔钱', url: 'https://c/z?token=1' },
+  ]);
+  assert.deepStrictEqual(parseSources(''), [], '未配置时不产生源');
+});
+
+ok('带标签的源加「标签 * 」前缀，裸源保持原名', () => {
+  const input = [{ name: '[ss]香港|家宽|砖线1' }, { name: 'x' }];
+  assert.deepStrictEqual(prefixProxies(input, '酷狗').map((p) => p.name), [
+    '酷狗 * [ss]香港|家宽|砖线1',
+    '酷狗 * x',
+  ]);
+  assert.deepStrictEqual(prefixProxies(input, '').map((p) => p.name), ['[ss]香港|家宽|砖线1', 'x']);
+  assert.strictEqual(input[0].name, '[ss]香港|家宽|砖线1', '不能改到原对象');
+});
+
+ok('前缀过的酷狗节点会被当作新节点补进策略组，且校验通过', () => {
+  const cfg = baseConfig();
+  cfg.proxies = [].concat(cfg.proxies, prefixProxies([{ name: '香港01' }], '酷狗'));
+  const added = injectIntoGroups(cfg, ['酷狗 * 香港01']);
+  const select = cfg['proxy-groups'].find((g) => g.name === '🚀节点选择');
+  assert.ok(select.proxies.includes('酷狗 * 香港01'));
+  assert.strictEqual(added.length, 2, '两个组各补一次');
+  assert.deepStrictEqual(validate(cfg).problems, []);
+});
+
 ok('新节点补进指定组且不重复', () => {
   const cfg = baseConfig();
   const added = injectIntoGroups(cfg, ['[酷狗] 美国家宽 DMIT2']);
@@ -113,6 +146,53 @@ ok('校验器能抓到重名节点', () => {
   cfg.proxies.push({ name: '🇯🇵日本东京01', type: 'vless' });
   const { problems } = validate(cfg);
   assert.ok(problems.some((p) => p.includes('节点重名')), JSON.stringify(problems));
+});
+
+ok('剔除信息节点：节点删掉，分组引用一起清掉', () => {
+  const cfg = baseConfig();
+  cfg.proxies.push(
+    { name: '剩余流量：994.7 GB', type: 'ss', server: '127.0.0.1' },
+    { name: '套餐到期：2027-09-25', type: 'ss', server: '127.0.0.1' },
+  );
+  cfg['proxy-groups'][1].proxies.push('剩余流量：994.7 GB', '套餐到期：2027-09-25');
+
+  const { removed, refs } = stripInfoNodes(cfg);
+  assert.strictEqual(removed.length, 2, JSON.stringify(removed));
+  assert.strictEqual(refs, 2, '两处引用都要清掉');
+  assert.ok(!cfg.proxies.some((p) => p.name.includes('剩余流量')));
+  assert.ok(!cfg['proxy-groups'][1].proxies.some((n) => n.includes('剩余流量')));
+  assert.deepStrictEqual(validate(cfg).problems, [], '剔干净后不该有悬空引用');
+});
+
+ok('带机场前缀的信息节点也会被剔除，真节点留下', () => {
+  const cfg = {
+    proxies: [
+      { name: '酷狗 * 剩余流量：1 GB', type: 'ss' },
+      { name: '酷狗 * 距离下次重置剩余：29 天', type: 'ss' },
+      { name: '酷狗 * [ss]香港|家宽|砖线1|x25', type: 'ss' },
+    ],
+    'proxy-groups': [{ name: '🚀节点选择', type: 'select', proxies: ['酷狗 * 剩余流量：1 GB'] }],
+  };
+  const { removed } = stripInfoNodes(cfg);
+  assert.strictEqual(removed.length, 2, JSON.stringify(removed));
+  assert.deepStrictEqual(cfg.proxies.map((p) => p.name), ['酷狗 * [ss]香港|家宽|砖线1|x25']);
+});
+
+ok('信息节点数值变了，也不会被当成新节点补回策略组（build 顺序回归）', () => {
+  const cfg = baseConfig();
+  cfg.proxies.push({ name: '剩余流量：994.7 GB', type: 'ss', server: '127.0.0.1' });
+  cfg['proxy-groups'][1].proxies.push('剩余流量：994.7 GB');
+  // SOURCES 拉回来时流量数值已经变了 → 名字不同，会被误判成「新节点」
+  const merged = [...cfg.proxies, { name: '剩余流量：994.83 GB', type: 'ss', server: '127.0.0.1' }];
+
+  const asm = assemble(cfg, merged);
+  ensureAliasTargets(cfg, asm.alias.targets);
+
+  assert.strictEqual(asm.info.removed.length, 2, JSON.stringify(asm.info.removed));
+  assert.deepStrictEqual(validate(cfg).problems, []);
+  for (const g of cfg['proxy-groups']) {
+    assert.ok(!(g.proxies || []).some((n) => String(n).includes('剩余流量')), g.name + ' 里还有流量节点');
+  }
 });
 
 console.log(`\n通过 ${passed} 项`);
