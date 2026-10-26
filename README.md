@@ -112,6 +112,30 @@ const AI_PREFERRED_NODES = [
 
 > 关键字必须精确到能在当前机场节点名里找到。曾经踩过的坑：`DMIT2` 在赔钱机场根本不存在，于是首选逻辑静默失效，AI 一路跟到主组，而主组当时指向新加坡，表现为「明明选了美国却走新加坡、IP 天天变」。
 
+### Gemini / Google 的额外注意点
+
+Gemini 除了 `gemini.google.com`（已覆盖），实际还会用到这些**目前走主组**的域名：
+
+| 域名 | 用途 | 当前出口 |
+| --- | --- | --- |
+| `accounts.google.com` | 登录 / OAuth | 主组 |
+| `alkalimakersuite-pa.clients6.google.com` | Gemini 后端 API | 主组 |
+| `lh3.googleusercontent.com` | 生成的图片 / 头像 | 主组 |
+| `content-push.googleapis.com` | 推送 | 主组 |
+
+如果 AI 组和主组**出口国家不同**（例如 AI 组在美国、主组在新加坡），Google 会在同一次会话里看到两套 IP，很容易判成「地区不可用」或异常流量。**最稳的做法是让主组和 AI 组同国**，这比逐个补域名更彻底。
+
+另外节点本身也要过 Google 的检查。实测赔钱机场（同一时刻、同一台机器）：
+
+| 节点 | `gemini.google.com` | ChatGPT |
+| --- | --- | --- |
+| 圣何塞03 / 04 / 06 | 200 ✅ | 通过 |
+| 洛杉矶08 | 200 ✅ | 通过 |
+| 圣何塞01 / 02 | 302 → `google.com/sorry/index` ❌ | 通过 |
+| 新加坡01 | 302 → `google.com/sorry/index` ❌ | 通过 |
+
+`/sorry/index` 是 Google 的异常流量拦截页。也就是说**能连 ChatGPT 的节点不一定能过 Gemini**，挑节点时要分别验证。当前首选 `圣何塞03` 是两者都通过的。
+
 ## 快速开始
 
 1. FlClash → **配置** → **覆写脚本** → 新建，URL 填：

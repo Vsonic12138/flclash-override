@@ -229,13 +229,13 @@ const AI = '🤖 AI 网站';
   const otherAirport = makeConfig();
   otherAirport.proxies = [
     { name: '🚀节点选择', type: 'select', server: 'a.example.com', port: 8388 },
-    { name: '🇺🇸美国圣何塞01-0.1倍', type: 'vless', server: 'b.example.com', port: 443 },
+    { name: '🇺🇸美国圣何塞03-0.1倍', type: 'vless', server: 'b.example.com', port: 443 },
     { name: '🇺🇸美国洛杉矶08-0.1倍', type: 'vless', server: 'c.example.com', port: 443 },
   ];
   const swapped = load().main(otherAirport)['proxy-groups'][0].proxies;
   assert.strictEqual(
     swapped[0],
-    '🇺🇸美国圣何塞01-0.1倍',
+    '🇺🇸美国圣何塞03-0.1倍',
     '第一个关键字不匹配时应自动回退到后面的关键字（跨机场通用）'
   );
   assert.ok(swapped.indexOf('PROXY') > -1, '回退置顶后仍保留跟随主组');
