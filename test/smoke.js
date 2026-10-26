@@ -224,6 +224,21 @@ const AI = '🤖 AI 网站';
   // 没有命中关键字的节点 → 回到「跟随主组」的老行为
   const plain = load().main(makeConfig());
   assert.strictEqual(plain['proxy-groups'][0].proxies[0], 'PROXY', '无匹配节点时应默认跟随主组');
+
+  // 换机场：节点名里没有 DMIT2，但命中数组里的第二个关键字（赔钱机场场景）
+  const otherAirport = makeConfig();
+  otherAirport.proxies = [
+    { name: '🚀节点选择', type: 'select', server: 'a.example.com', port: 8388 },
+    { name: '🇺🇸美国圣何塞01-0.1倍', type: 'vless', server: 'b.example.com', port: 443 },
+    { name: '🇺🇸美国洛杉矶08-0.1倍', type: 'vless', server: 'c.example.com', port: 443 },
+  ];
+  const swapped = load().main(otherAirport)['proxy-groups'][0].proxies;
+  assert.strictEqual(
+    swapped[0],
+    '🇺🇸美国圣何塞01-0.1倍',
+    '第一个关键字不匹配时应自动回退到后面的关键字（跨机场通用）'
+  );
+  assert.ok(swapped.indexOf('PROXY') > -1, '回退置顶后仍保留跟随主组');
 }
 
 // ==================== 场景 5：异常输入 ====================

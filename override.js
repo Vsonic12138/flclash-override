@@ -167,10 +167,16 @@ const CUSTOM_RULES = PROCESS_RULES.concat(DIRECT_DOMAINS.map((domain) => `DOMAIN
 // 策略组名：FlClash 界面里会显示在最上面
 const AI_GROUP = '🤖 AI 网站';
 
-// AI 出口偏好：成员名里包含这个关键字(不区分大小写)的节点会排到组内第一位，
-// 于是订阅每天更新后即便选择被重置，默认也会落回它（想要"纯家宽出口跑 AI"就填关键字）
-// 留空 '' = 默认跟随主组
-const AI_PREFERRED_NODE = 'DMIT2';
+// AI 出口偏好：按数组顺序取第一个「成员名里包含该关键字(不区分大小写)」的节点，
+// 排到组内第一位。于是订阅每天更新后即便选择被重置，默认也会落回它。
+// 数组的作用是跨机场通用：填上各自机场里真实存在的节点关键字即可，不匹配的自动跳过。
+// 留空 [] = 默认跟随主组。
+// 注意：关键字必须能在「当前机场」的节点名里匹配到，否则静默失效（回落到主组）。
+const AI_PREFERRED_NODES = [
+  'DMIT2',      // Hello酷狗：美国·家宽 DMIT2
+  '圣何塞01',    // 赔钱机场：美国圣何塞，0.1倍，实测最稳且出口 IP 固定
+  '洛杉矶08',    // 赔钱机场：美国洛杉矶，备选
+];
 
 // 内联补充清单（补上游 AI 名单没覆盖到的站点；已覆盖的重复添加无副作用）
 // 覆盖范围：OpenAI / ChatGPT / Sora / Gemini / NotebookLM / Claude / Copilot /
@@ -349,16 +355,27 @@ function ensureAiGroup(config, primary) {
   add('DIRECT');
 
   // 4) 偏好节点置顶 → 订阅更新/选择被重置后，AI 默认仍走它
-  if (AI_PREFERRED_NODE) {
-    const keyword = String(AI_PREFERRED_NODE).toLowerCase();
+  if (Array.isArray(AI_PREFERRED_NODES) && AI_PREFERRED_NODES.length > 0) {
     const nodeNames = (Array.isArray(config.proxies) ? config.proxies : [])
       .map((proxy) => proxy && proxy.name)
       .filter((name) => typeof name === 'string' && name);
-    const preferred = nodeNames.filter((name) => name.toLowerCase().indexOf(keyword) !== -1)[0];
+    let preferred = null;
+    let matchedKeyword = null;
+    for (const raw of AI_PREFERRED_NODES) {
+      const keyword = String(raw || '').toLowerCase();
+      if (!keyword) continue;
+      preferred = nodeNames.filter((name) => name.toLowerCase().indexOf(keyword) !== -1)[0];
+      if (preferred) { matchedKeyword = raw; break; }
+    }
     const index = preferred ? candidates.indexOf(preferred) : -1;
     if (index > 0) {
       candidates.splice(index, 1);
       candidates.unshift(preferred);
+      console.log('[override] AI 首选节点 = ' + preferred + '（关键字：' + matchedKeyword + '）');
+    } else {
+      // 静默失效是排查难点：没匹配到就明确告警，而不是无声回落到主组
+      console.log('[override] 警告：AI_PREFERRED_NODES 里没有任何关键字能在当前机场的节点名中匹配到，' +
+        'AI 将跟随主组（' + primary + '）。请检查节点名。');
     }
   }
 
