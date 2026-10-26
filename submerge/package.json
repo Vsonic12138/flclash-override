@@ -1,0 +1,12 @@
+{
+  "name": "submerge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "把两家机场的 Clash 订阅合并成一条本地订阅",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "port": 7788,
+  "base": "赔钱",
+  "cacheSeconds": 1800,
+  "prefix": {
+    "酷狗": "[酷狗]"
+  },
+  "subs": {
+    "赔钱": "https://dasho.xn--cp3a08l.com/api/v1/pq/在此填赔钱机场的订阅路径",
+    "酷狗": "https://z.7li7li.net/api/v1/client/subscribe?token=在此填酷狗的真实token"
+  }
+}

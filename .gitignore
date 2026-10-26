@@ -1,7 +1,10 @@
 node_modules/
-*.log
-.DS_Store
-Thumbs.db
-pipeline-input.json
-pipeline-result.json
-bm7ai/
+.wrangler/
+
+# 本地测试用的配置（含本机路径）
+submerge/test-config.json
+submerge/bad-config.json
+
+# 真实订阅链接永远不进仓库（放 %USERPROFILE%\.submerge\config.json）
+submerge/config.json
+*.last-good.yaml
