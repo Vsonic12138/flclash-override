@@ -1,37 +1,40 @@
-# 四层结构
-
 [← 索引](../README.md)
 
-一句话：**规则写在脚本里，订阅只负责提供节点。**
+# 架构与分流优先级
 
-```
-① 自定义直连层   内联域名 + 进程 → DIRECT
-② AI 层          AI 域名 → 🤖 AI 网站（自动新建）
-③ 上游层         rule-providers 引用大名单，日更
-④ 订阅层         机场自带规则，原样保留
-```
+## 当前主链路
 
-从上到下依次生效，越靠前优先级越高。
-
-- **①② 内联在脚本里**，不依赖网络，永远可用。
-- **③ 引用外部名单**，24 小时自动刷新。
-- **④ 完全不动**，机场的流媒体解锁、地区分流照常工作。
-
-## 为什么不 fork 上游仓库
-
-上游名单每天推送（`direct.txt` 11 万行、`reject.txt` 20 万行），fork 等于每天手工合冲突。而 mihomo 的 `rule-providers` 本来就能引用外部名单并定时刷新：
-
-```js
-config['rule-providers']['up-direct'] = {
-  type: 'http', behavior: 'domain', format: 'yaml',
-  url: '.../Loyalsoldier/clash-rules/release/direct.txt',
-  path: './ruleset/up-direct.yaml', interval: 86400,
-};
-config.rules.unshift('RULE-SET,up-direct,DIRECT');
+```text
+FlClash → Caddy HTTPS 入口 → composer（127.0.0.1:13200）
+                              ├─ 机场完整配置：提供 DNS 等底座
+                              ├─ Sub-Store（127.0.0.1:13000）：三机场节点
+                              ├─ override.js：个人例外和 AI 规则
+                              └─ runtime.env：默认、备用、地区及倍率限制
 ```
 
-上游更新 → 内核自动拉取 → 我们不用改代码。
+代码由此仓库维护，运行配置和凭据留在服务器。客户端不依赖本地仓库持续运行，也不用另挂客户端脚本。
 
-## 为什么还需要①层
+## 当前统一规则模式
 
-嘉立创、飞书、UU远程这类站点，主流规则仓库**都没收录**，只能自己写。详见[直连层覆盖](coverage.md)。
+启用 `UNIFIED_RULES`、`SIMPLIFY_GROUPS`、`USAGE_GROUPS` 和 `AUTO_BACKUP` 后：
+
+1. 个人直连域名与进程。
+2. AI 名单、Google 登录及相关 API → AI 家宽。
+3. 内网域名直连，广告名单 → 广告组。
+4. Copilot 特例 → AI；GitHub 名单 → 下载；YouTube 名单 → 视频。
+5. 国内域名与内网 / 国内 IP 直连。
+6. 其他流量 → 日常上网。
+
+GitHub / YouTube / AI 分类引用 MetaCubeX，国内及广告基础名单引用 Loyalsoldier，更新周期 24 小时。规则集条目数随上游变化，不能把配置中的 RULE-SET 行数当成全部域名数量。
+
+日常、下载、视频分别通过隐藏 fallback 组按固定顺序选可用节点，优先赔钱机场，之后才是其他机场的应急节点。AI 自动组仅在同地区家宽中回退；日本和马来西亚候选保留为手动选项。节点质量与测速局限见 [composer](composer.md)。
+
+## 兼容模式
+
+仅使用 `override.js`，或服务器未启用 `UNIFIED_RULES` 时，仍保持原来的四层：个人直连 → AI → 公共名单 → 机场规则。机场规则原样保留，DNS 与 MATCH 兜底沿用底座。
+
+这与当前统一规则模式的行为不同，切换时要检查分组、规则顺序和客户端保存的选择。
+
+## 为什么引用公共名单
+
+公共名单负责服务域名与基础分类，本仓库维护出口策略和少量个人例外。通过 rule-providers 定期拉取，避免复制完整名单和手工同步更新。上游下载失败时应检查内核缓存和日志，不能假定规则总已加载。

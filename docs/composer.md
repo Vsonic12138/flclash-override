@@ -1,135 +1,105 @@
-# 大狗叫订阅：服务器端合成完整配置
+[← 索引](../README.md)
 
-把「机场完整配置」+「Sub-Store 合并出的节点」+「本仓库 `override.js` 的规则层」在服务器上合成一份**可直接订阅的完整 Clash 配置**。客户端不需要再挂覆写脚本，订阅里就带着规则。
+# 服务器端合成订阅
 
-## 为什么需要它
+composer 是当前主服务：把三机场节点、共享规则与用途策略合成一份完整 Clash YAML，FlClash 直接订阅，无需另挂脚本。
 
-Sub-Store 的 `组合订阅`（merge）只输出 `proxies:`，没有 `proxy-groups` / `rules` / `rule-providers`。FlClash 直接订阅这种链接，只有节点、没有分流。之前的做法是在客户端挂 `override.js`（有效，但每台设备都要配一遍），或者在本机跑 `submerge`（电脑关机就断）。
+## 当前配置快照
 
-`composer/` 把这一步搬到服务器：一条链接，任何设备直接订阅。
+2026-10-29 核对的运行配置：348 个节点定义、5 个可见用途组和 4 个隐藏自动回退组、148 条顶层规则、7 个公共规则集。数量是快照，会随来源和名单变化。
+
+| 分组 | 默认与备用 |
+| --- | --- |
+| 日常上网 | 默认新加坡 4 号，赔钱机场共 7 条候选，之后是酷狗和 TAG 应急线路 |
+| 下载推荐 | GitHub 和部分开发服务，自动回退优先赔钱机场 6 条候选 |
+| 视频推荐 | YouTube，自动回退优先赔钱机场 6 条候选 |
+| AI 网站 | DMIT2 Vless → DMIT2 Hy2 → 其他美国家宽；日本和马来西亚仅手动选择 |
+| 广告拦截 | REJECT；DIRECT 可临时放行 |
+
+日常、下载、视频选择第一项“默认与备用”才启用自动回退；手动选择具体节点会固定它。AI 选择“美国家宽自动”。新配置默认值不能覆盖客户端已保存的旧选择，更新后须核对。
 
 ## 合成流程
 
-```
-① 底座   机场完整 YAML（BASE_URL，User-Agent=clash-verge/v2.4.2）
-         → 提供 mixed-port / dns / 9 个策略组 / 机场自带 9000+ 条规则
-② 节点   按 SOURCES 顺序拉各家机场（`;` 分隔，顺序即优先级）：
-         赔钱 = Sub-Store 的 /download/collection/merge（无标签，保持原名）
-         酷狗 = Sub-Store 的 /download/酷狗（有标签，节点名加「酷狗 * 」前缀）
-③ 替换   用 ② 的 proxies 覆盖 ① 的 proxies
-④ 清理   剔除信息节点（`剩余流量：…` / `距离下次重置剩余：…` / `套餐到期：…`），
-         策略组里对这些假节点的引用一起清掉
-⑤ 折叠   把机场自带的「🤖AI网站」组折到仓库的「🤖 AI 网站」上，
-         让 override.js 新建统一 AI 组（偏好节点才会置顶）
-⑥ 补组   合并来的新节点（名字不在底座里的，如酷狗家宽）补进
-         「🚀节点选择」「♻️自动选择」
-⑦ 规则   跑本仓库 override.js 的 main(config)：
-         自定义直连 42 条 / AI 域名 77 条 / 上游名单 5 个 rule-provider
-         → prepend 到机场规则之前并去重（与 FlClash 端覆写完全一致）
-⑧ 校验   YAML 可解析 / 节点名唯一 / 分组引用存在 / RULE-SET 引用存在
-```
+1. 拉取 BASE_URL：沿用机场完整配置的 DNS、端口等底座。
+2. 按 SOURCES、OPTIONAL_SOURCES 拉节点，增加来源前缀并去重。
+3. 同步底座分组中的节点引用，剔除信息节点，合并同义组。
+4. 当前 UNIFIED_RULES 模式清空机场规则，由 override.js 添加个人直连、AI 和公共名单。
+5. 按地区、倍率和关键词限制家宽候选，隔离日常与 AI。
+6. 精简用途分组，添加 MetaCubeX GitHub / YouTube 名单及 Copilot 例外。
+7. 添加三个按固定顺序回退的隐藏组，最后以国内 IP 直连、其余流量走日常兜底。
+8. 校验节点、分组和 RULE-SET 引用，成功后保存 last-good.yaml。
 
-输出示例（当前实测，两家机场）：`proxies=117 groups=9 rules=9075 rule-providers=5`，约 497 KB。
-117 = 赔钱 71 + 酷狗 49 − 3 个信息节点。
+UNIFIED_RULES 未启用时保留机场规则，适合兼容旧部署。两种模式的规则数量、用途和默认行为不同。
 
-## 节点名加机场前缀（`酷狗 * xxx`）
+## 规则来源与覆盖
 
-`SOURCES` 里带标签的源，节点名统一加「`标签 * `」前缀，一眼看出是谁家的：
+- MetaCubeX meta-rules-dat：AI、GitHub、YouTube 的域名分类，24 小时刷新。
+- Loyalsoldier clash-rules：国内、内网、广告及可选 gfw 名单，24 小时刷新。
+- override.js：个人直连、Google 登录与 AI 的补充域名。
 
-| 写法 | 结果 |
-| --- | --- |
-| `酷狗=<url>` | `酷狗 * [ss]香港|家宽|砖线1|x25` |
-| `<url>`（裸 URL） | 保持机场原名，不加前缀 |
+当前顺序见 [架构](architecture.md)。GitHub 公共名单包含网页、仓库、文件域名及部分开发服务；Copilot 特例优先走 AI。YouTube 页面和视频资源走视频组，Google 登录走家宽。普通浏览器下载无法仅凭“下载动作”统一分类，未识别的海外下载走日常组。
 
-- 两家机场有同名节点时，前缀天然去重；同一个标签内仍按名字去重。
-- 前缀不影响 `override.js` 的 AI 首选节点：`AI_PREFERRED_NODES` 用**子串**匹配（如 `DMIT2`），
-  所以「酷狗 * [vless]美国|家宽|DMIT2|…」照样能被置顶到 `🤖 AI 网站` 第一位。
-- 信息节点即使带了前缀（`酷狗 * 剩余流量：…`）也会被剔除，不会污染节点列表。
+## 配置与部署
 
-## 规则从哪来（回答常见的「是不是抄大名单」）
+完整占位模板见 `composer/runtime.env.example`；构建、私有备份与回滚见 [部署恢复](recovery.md)。Dockerfile 需要 server.js、package 文件和仓库根目录 override.js 同处构建上下文，不能漏复制规则层。
 
-是的，分层叠加，不是从零手写：
+服务默认只监听 127.0.0.1:13200；Caddy 管理后台和订阅入口的访问策略见 [Sub-Store 与 Caddy](substore.md)。仓库没有保存真实订阅 URL、私有路径或后台密码。
 
-| 层 | 内容 | 来源 |
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| ① 自定义直连 | 42 条（嘉立创 / 立创 / 飞书 / 字节 / B站 / GameViewer 等） | 本仓库 `override.js` 内联 |
-| ② AI 层 | 77 条内联域名 + MetaCubeX 的 `category-ai-chat-!cn`（204 条，日更） | 内联 + MetaCubeX meta-rules-dat |
-| ③ 上游大名单 | private / reject / direct / gfw 四张表 | Loyalsoldier/clash-rules（★28.9k，日更） |
-| ④ 机场规则 | 9000+ 条，原样保留在后面 | 机场订阅 |
+| BASE_URL | 空 | 机场完整 YAML，提供底座 |
+| SOURCES | 空 | 分号分隔的标签=URL；无标签保持原名 |
+| MERGE_URL | 空 | SOURCES 未配置时的兼容单来源 |
+| OPTIONAL_SOURCES | 空 | 可选来源，失败保留最近一次成功缓存 |
+| UA | clash-verge/v2.4.2 | 来源可能按 UA 返回不同配置，修改前验证 |
+| HOST / PORT | 127.0.0.1 / 13200 | 后端绑定地址 |
+| SECRET | /dgc | 私有订阅路径；生产需替换并保护 |
+| CACHE_TTL | 300 | 输出缓存秒数，?force=1 强制重建 |
+| FETCH_TIMEOUT | 30000 | 拉来源的超时毫秒数 |
+| LAST_GOOD_DIR | data 目录 | 上次成功输出与可选来源缓存 |
+| FILENAME | 大狗叫订阅.yaml | 下载文件名 |
+| OVERRIDE_FILE | 同目录 override.js | 共享规则层 |
+| GROUP_ALIASES | 🤖AI网站=🤖 AI 网站 | 分号分隔的旧组=新组 |
+| NODE_GROUPS | 🚀节点选择,♻️自动选择 | 逗号分隔，新节点补进这些组 |
+| NODE_LABEL_SEPARATOR | ` * ` | 当前部署改为 ` · `，前后空格属于值 |
+| BASE_SOURCE_LABEL | 空 | 当前为赔钱机场，同步底座节点引用；SOURCES 须配相同标签 |
+| AI_RESIDENTIAL_ONLY | false | AI 仅允许符合条件的家宽标注节点 |
+| DAILY_DATACENTER_ONLY | false | 日常组排除家宽和特殊出口 |
+| AI_REGION | 美国 | 兼容地区默认值 |
+| AI_ALLOWED_REGIONS | AI_REGION | 手动家宽候选地区，分号分隔 |
+| AI_AUTO_REGION | AI_REGION | 自动回退地区；当前美国 |
+| AI_AUTO_FALLBACK | false | 增加同地区家宽自动回退组 |
+| AI_MAX_MULTIPLIER | 0 | 0 不限制；当前 6，未知倍率不自动加入 |
+| AI_RESIDENTIAL_KEYWORDS | 空 | 家宽名称关键词，分号分隔 |
+| SIMPLIFY_GROUPS | false | 合并旧媒体、地区、漏网组；用途组和广告组由其他开关补充 |
+| DAILY_NODE_NAMES | 空 | 精选日常完整节点名，分号分隔 |
+| AD_GROUP_ENABLED | false | 增加 REJECT / DIRECT 广告开关 |
+| USAGE_GROUPS | false | 增加下载和视频组及对应规则集 |
+| DOWNLOAD_PREFERRED / VIDEO_PREFERRED | 空 | 用途手动组的首项，须在赔钱机场精选候选中 |
+| AUTO_BACKUP | false | 增加日常、下载、视频三个隐藏 fallback 组 |
+| DAILY_FALLBACK_NAMES | 空 | 日常回退完整节点名，按顺序、分号分隔 |
+| DOWNLOAD_FALLBACK_NAMES | 空 | 下载回退顺序 |
+| VIDEO_FALLBACK_NAMES | 空 | 视频回退顺序 |
+| UNIFIED_RULES | false | 用公共名单与个人例外替代机场规则，补国内与日常兜底 |
 
-上游名单用 `rule-providers` **远程引用**（`interval: 86400`），不 fork、不落库；README 里也是这个理由。
+当前生产功能通过 runtime.env 显式开启，代码默认保持兼容。
 
-## 部署
+## 默认、探活与质量边界
 
-```bash
-# 1) 拷代码（server.js / package.json / Dockerfile / override.js）
-rsync -av composer/ server:/opt/dgc/   # override.js 也要放进去
+三个用途分别探测 Google 204、GitHub robots、YouTube 204，每 120 秒检查一次，按候选顺序选择可用线路。`max-failed-times` 超过阈值会触发额外检查，不是“保证失败三次才切换”。AI 自动组优先 DMIT2 两种入口，之后仍只在美国家宽中回退。
 
-# 2) 构建
-ssh server 'cd /opt/dgc && docker build -t dgc-composer .'
+来源名称中的家宽和倍率只是机场标注。探测通过也不代表吞吐、纯净度、地区权限或已登录的 AI 会话可用。2026-10-29 当前 Windows 以太网 / FlClash TUN 环境筛查 30 条常规线路，再对 8 条做独立内核实际请求和 3 MB 下载短测；新加坡 4 号两次约 1.8–3.9 MB/s，按该次表现排在首位。测速不是 GitHub 专项吞吐，也不代表公司网络或晚高峰。
 
-# 3) 运行（--network host 才能访问同机的 Sub-Store）
-ssh server 'docker run -d --name dgc --restart unless-stopped --network host \
-  -e BASE_URL="<机场完整配置链接>" \
-  -e SOURCES="http://127.0.0.1:13000/<后端路径>/download/collection/merge;酷狗=http://127.0.0.1:13000/<后端路径>/download/%E9%85%B7%E7%8B%97" \
-  -e SECRET=/dgc-<随机12位> \
-  -e CACHE_TTL=300 \
-  -v /opt/dgc/data:/app/data \
-  dgc-composer'
-```
+OPTIONAL_SOURCES 缓存只表示曾从 Sub-Store 获得节点，不能证明机场源仍可刷新。TAG 订阅链接生成后 10 分钟有效，需在有效期内让 Sub-Store 拉取，过期后按机场机制重新填写。缓存含凭据，不公开。
 
-环境变量：
+## 验证与回滚
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `BASE_URL` | – | 机场完整配置（必须能返回 Clash YAML） |
-| `SOURCES` | – | 节点源，`;` 分隔，顺序即优先级；`标签=URL` 会给该源节点加「`标签 * `」前缀，裸 URL 不加前缀 |
-| `MERGE_URL` | – | 老的单源写法，等价于一个无标签的 `SOURCES`；配了 `SOURCES` 就以 `SOURCES` 为准 |
-| `SECRET` | `/dgc` | 订阅路径，建议随机 |
-| `UA` | `clash-verge/v2.4.2` | 拉机场配置用的 UA，**别改成 clash.meta**（见下） |
-| `CACHE_TTL` | `300` | 缓存秒数，`?force=1` 强制重建 |
-| `GROUP_ALIASES` | `🤖AI网站=🤖 AI 网站` | 组名折叠，`;` 分隔多组 |
-| `NODE_GROUPS` | `🚀节点选择,♻️自动选择` | 新节点补进哪些组 |
-| `FILENAME` | `大狗叫订阅.yaml` | 订阅文件名的中文名 |
+本机 `/health` 只确认进程存活；`/diag` 提供构建时间、错误和统计。强制重建后要确认不是在返回旧 last-good.yaml。客户端同时检查规则集已加载、分组选择与实际连接链路。
 
-Caddy 侧只需一条路由（比 `/download` 那些更具体，优先级自然更高）：
+2026-10-29 的运行验证包括 GitHub / YouTube 走赔钱机场、Google 登录走 DMIT2、B 站直连。独立内核故意配置故障首选后，可回退到备用并完成 204 请求；未在生产中故意破坏线路。
 
-```caddyfile
-handle /dgc-<随机12位>* {
-    reverse_proxy 127.0.0.1:13200
-}
-```
+## 历史兼容快照
 
-文件名由 composer 自己发 `Content-Disposition`，Caddy 不用管。
+早期两机场合成曾为 117 节点、9 组、9075 条规则、5 个规则集。该快照采用机场规则叠加模式，不能作为当前统一规则模式的验收值。
 
-## 验证
-
-```bash
-curl -s http://127.0.0.1:13200/health          # ok
-curl -s http://127.0.0.1:13200/diag            # 节点/分组/规则/RULE-SET 数 + 缓存时间
-curl -s -D - -o /dev/null https://<域名>/<SECRET> | grep -i content-disposition
-curl -s https://<域名>/<SECRET> | grep -c '^  - name: 酷狗 \* '   # 带前缀的酷狗节点数
-```
-
-FlClash 里添加这条链接，名字会是「大狗叫订阅」；配置详情应看到 9 个组（含 `🤖 AI 网站`，第一项是偏好节点）。
-
-## 坑
-
-1. **机场按 UA 发不同文件**（实测同一链接）：`clash-verge/v2.4.2` → 71 节点 + 9 组 + 9263 规则；`FlClash/0.8.80` → 3 节点（试用版）；`clash.meta/v1.19.33` → 403；`mihomo/v1.19.33` → 0 节点。所以 `UA` 固定 `clash-verge/v2.4.2`。
-2. **组名折叠必须删旧组，不能改名**：`override.js` 的 `ensureAiGroup()` 遇到同名组直接复用、不会重排偏好节点；把机场的「🤖AI网站」删掉并改指「🤖 AI 网站」后，它才会新建组并把 `AI_PREFERRED_NODE` 置顶。
-3. **`js-yaml` 必须有**：Sub-Store 容器里没有，别想着借它的 node 模块。
-4. **缓存兜底**：构建失败时继续吐上一次成功的结果（`data/last-good.yaml`），避免客户端刷新时拿到 502。
-5. **规则数会变少**：机场 9263 条 + 仓库前置规则去重后是 9075 条，属正常（`dedupe()`）。
-6. **信息节点数值会变**：`剩余流量：994.83 GB` 这类假节点的名字每天都不一样，而底座分组里引用的还是上一版名字，
-   不处理就会报「分组 🚀节点选择 引用了不存在的节点」。composer 会先把这类节点连同分组引用一起剔除（日志里有「剔除信息节点 N 个」）。
-7. **剔除信息节点要在算「新节点」之前**：先算新增再剔除，变过名的流量节点会被当成新节点补回策略组，校验照样失败。
-
-## 和另外两条路的关系
-
-| 方案 | 位置 | 适用 |
-| --- | --- | --- |
-| `override.js`（客户端挂覆写） | 每台设备 | 只想改规则、节点仍用机场 |
-| `submerge/`（本机服务） | Windows 本机 | 电脑常开、临时合并 |
-| **`composer/`（本文）** | VPS | 一条链接多设备，最省事 |
-
-三者规则来源完全相同（同一个 `override.js`），可以随时换。
+`submerge/` 和 `worker/` 是历史路线，当前主服务不依赖；单独使用 override.js 的兼容方式见 [脚本开关](configuration.md)。

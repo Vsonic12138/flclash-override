@@ -16,3 +16,7 @@ pipeline-*.json
 composer/data/
 composer/.probe.yaml
 .deploy/
+
+# 私有运行配置和历史 Worker 绑定
+**/runtime.env
+worker/wrangler.toml

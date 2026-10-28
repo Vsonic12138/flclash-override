@@ -1,49 +1,53 @@
-# flclash-override
+# flclash-override · 聚合订阅与分流配置
 
-FlClash / Clash Meta 的**订阅覆写脚本**：把自用分流规则注入到机场订阅生成的配置最前面。节点原样保留，DNS 和 `MATCH` 兜底不动。
+面向 FlClash / Mihomo 的三机场聚合服务。**当前主方案是 dedirock 上的 composer：机场提供节点，仓库维护分流、用途分组和默认备用，客户端订阅完整配置。**
 
-解决的问题：机场订阅每天更新会把 `config.yaml` 整个重写，手动加的规则位置不保、换机场还得重配一遍。用覆写脚本后，**规则在脚本里，订阅只负责提供节点**。
+## 日常使用
 
-## 快速开始
+FlClash 选中“大狗叫订阅”，保持规则模式。更新订阅即可获得服务器生成的节点和分组，无需额外挂客户端覆写脚本。
 
-1. FlClash → **配置** → **覆写脚本** → 新建，URL 填：
+- 🌐 日常上网：国内直连，其他海外流量优先赔钱机场。
+- 📥 下载推荐：GitHub 及规则集覆盖的开发服务优先赔钱机场；其他未分类下载走日常。
+- 📺 视频推荐：YouTube 优先赔钱机场；国内视频直连。
+- 🤖 AI 网站：AI 和 Google 登录走家宽，DMIT2 优先；日本、马来西亚家宽可手动选。
+- 🛡️ 广告拦截：默认 REJECT，必要时可手动放行。
 
-   ```
-   https://raw.githubusercontent.com/Vsonic12138/flclash-override/main/override.js
-   ```
+日常、下载、视频选择各组第一项“默认与备用”；AI 选择“美国家宽自动”。手动选择具体节点会固定该线路。自动探测与 IP 类型标注都不能保证所有服务可用。
 
-2. 回到**配置**页 → 点订阅 → **覆写** → 类型选 **脚本** → 选中该脚本。
-3. 重新应用配置（切换一次开关或重启 FlClash）。
+## 维护入口
 
-其他订阅挂同一个脚本即可，不用重复配置规则。
+修改本地文件、Git 提交、部署服务器、客户端更新订阅是四个不同步骤。**仅提交代码不会更新当前服务器。** 真实订阅链接和恢复凭据单独备份，不进入 Git。
 
-## 文档
-
-| 文档 | 讲什么 | 什么时候看 |
+| 文档 | 内容 | 适用场景 |
 | --- | --- | --- |
-| [四层结构](docs/architecture.md) | 规则怎么分层、为什么引上游而不 fork | 想理解优先级 |
-| [直连层覆盖](docs/coverage.md) | 哪些站点强制直连及原因 | 某个站速度不对 |
-| [AI 层](docs/ai-layer.md) | `🤖 AI 网站` 组、首选节点怎么定 | 给 AI 固定出口 |
-| [Gemini 注意事项](docs/gemini.md) | 为什么提示「地区不可用」 | Gemini 报错 |
-| [节点实测记录](docs/nodes.md) | 各节点对 ChatGPT / Gemini 的实测 | 换节点、排查断连 |
-| [双订阅合并](docs/submerge.md) | 两家机场合一、家宽节点进 AI 组 | 想同时用两个机场 |
-| [服务器端合并](docs/substore.md) | Sub-Store + Caddy 部署在 VPS，一条链接多设备用 | 换设备、不想开电脑 |
-| [大狗叫订阅](docs/composer.md) | 服务器端合成：机场配置 + 合并节点 + 本仓库规则，一条链接直接订阅 | 想「订阅即带规则」 |
-| [开关与修改](docs/configuration.md) | 全部开关、加规则的方法 | 定制 |
-| [自测](docs/testing.md) | 怎么跑测试 | 改完代码 |
-| [常见问题](docs/faq.md) | FAQ | 遇到问题先看这里 |
+| [架构与优先级](docs/architecture.md) | 当前服务链路、公共名单、兼容模式 | 理解分流 |
+| [服务器合成配置](docs/composer.md) | 环境变量、部署、默认与备用 | 调整节点与策略 |
+| [部署恢复](docs/recovery.md) | 配置模板、私有备份、重建与回滚 | 换服务器、恢复故障 |
+| [Sub-Store 与 Caddy](docs/substore.md) | 节点来源和后台访问控制 | 维护订阅源与入口 |
+| [AI 层](docs/ai-layer.md) | 家宽隔离、地区、倍率与 Google 登录 | AI 排障 |
+| [直连例外](docs/coverage.md) | 个人域名与进程例外 | 检查直连 |
+| [Gemini 注意事项](docs/gemini.md) | 地区与登录问题 | Gemini 排障 |
+| [节点实测记录](docs/nodes.md) | 带日期的历史记录 | 比较测试方法与旧结果 |
+| [测试](docs/testing.md) | 离线检查和运行时验证边界 | 修改与提交 |
+| [兼容脚本开关](docs/configuration.md) | 单独使用 override.js 的开关 | 维护兼容模式 |
+| [常见问题](docs/faq.md) | 其他排障经验 | 查阅旧问题 |
+| [历史本地合并](docs/submerge.md) | submerge 旧方案 | 查阅旧部署 |
+| [历史 Worker](worker/README.md) | 未接入现用链路的中转尝试 | 查阅旧方案 |
 
 ## 目录
 
-```
-override.js      覆写脚本（唯一产物，FlClash 直接引用）
-docs/            文档，按主题拆分
-test/smoke.js    测试，CI 自动跑
-submerge/        本地合并订阅服务（可选，见 docs/submerge.md）
-composer/        服务器端合成服务（可选，见 docs/composer.md）
-AGENTS.md        仓库约定（改代码前先读）
+```text
+composer/       当前服务器端合成服务、配置模板与单元测试
+  runtime.env.example   不含真实凭据的部署模板
+  Dockerfile            需将根目录 override.js 复制进构建上下文
+override.js     共享规则层；也可单独作为客户端覆写脚本
+docs/          当前文档与明确标注的历史记录
+test/          共享规则测试
+submerge/      历史本地合并服务，保留原路径
+worker/        历史 Cloudflare 中转方案，保留源代码和示例配置
+AGENTS.md      维护约定
 ```
 
 ## License
 
-个人自用配置，随取随用。上游名单版权归各仓库作者。
+个人自用配置。公共名单引用自 MetaCubeX、Loyalsoldier 等项目，上游名单版权与许可归原作者。仓库不复制上游完整名单。

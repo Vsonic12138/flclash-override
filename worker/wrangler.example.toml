@@ -1,0 +1,11 @@
+# 历史方案示例，不属于当前生产部署。
+name = "sub-gateway-example"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+
+[[kv_namespaces]]
+binding = "SUBKV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[triggers]
+crons = ["*/5 * * * *"]

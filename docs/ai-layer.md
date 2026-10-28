@@ -2,7 +2,37 @@
 
 [← 索引](../README.md)
 
-## 它做什么
+## 服务器聚合订阅的出口隔离（2026-10-27）
+
+`composer/` 启用 `AI_RESIDENTIAL_ONLY=true`、`DAILY_DATACENTER_ONLY=true`、
+`AI_AUTO_FALLBACK=true`、`AI_REGION=美国` 后：
+
+- `🤖 AI 网站` 默认选 `🏠 美国家宽自动`；也可以手动固定某个美国家宽。
+- 自动组按顺序回退：DMIT2 VLESS → DMIT2 Hysteria2 → 其它美国家宽。只在美国池内切换。
+- 日常各组排除机场标记的家宽及两个 AI 组，保持原有机房节点和地区分组。
+- AI 池不含 `DIRECT`、日常组或普通机房；没有合格节点就拒绝构建，不放宽条件。
+- 家宽判定来自机场节点名称（家宽 / 住宅 / residential），不是独立的 IP 属性认证。
+
+自动探活每 120 秒检查一次，超时 15 秒。它只判断 HTTPS 可达，不把 403 / 429 当作入口断开；
+也不证明 ChatGPT、Grok、Gemini 或 Antigravity 的账号、地区、配额和 IP 风控检查通过。
+家里和公司可能限制不同协议，因此先尝试同一 DMIT2 落地的不同入口，再换其它家宽。
+优先入口恢复后会回切；如果探活误判或需要会话期间固定 IP，在 `🤖 AI 网站` 手动选具体节点。
+
+Antigravity 的网页登录、OAuth、Cloud Code、Business AI Code、Vertex AI 和区域 API
+均补了内联规则，优先于机场的 Google 直连规则。
+端点参考：[Google 官方网络列表](https://antigravity.google/docs/enterprise/#network-allowlists-and-mtls-endpoints)。
+
+下文描述的是独立使用 `override.js` 时的通用行为。服务器聚合订阅会在覆写后追加上述隔离策略。
+
+服务器启用 `SIMPLIFY_GROUPS=true` 和 `AD_GROUP_ENABLED=true` 时，界面显示 `🌐 日常上网`、`🤖 AI 网站` 和 `🛡️ 广告拦截`。
+日常自动测速及美国家宽自动回退组保留为隐藏的内部组；媒体、地区与漏网之鱼规则统一指向日常入口。广告组默认 REJECT，可切换为 DIRECT；其他独立的拒绝规则仍独立生效。
+
+2026-10-29：AI 手动候选增加 TAGMeta 日本家宽（3 倍）和马来西亚家宽（1 倍）；自动回退仍限定美国，避免自动切换国家。
+倍率超过 6 倍或名称未标倍率的线路不自动加入。家宽与倍率均依据机场标注，实际 IP 类型及服务可用性需要实测。
+
+## 单独使用 override.js 的兼容行为
+
+以下描述未经过 composer 家宽隔离的原始脚本行为；当前主方案已限制成员，不允许 AI 回退到机房或 DIRECT，默认与备用见 [composer](composer.md)。
 
 脚本会在策略组最前面插入一个 `select` 组 `🤖 AI 网站`，把 AI 域名都指向它。
 
@@ -35,7 +65,7 @@
 
 两种方式：
 
-**手动** —— FlClash → 代理 → `🤖 AI 网站` → 选节点。其他流量不受影响，但重载配置后会重置。
+**手动** —— FlClash → 代理 → `🤖 AI 网站` → 选节点。其他流量不受影响，客户端可能保留旧选择，更新后需核对；手动固定节点时不使用自动备用。
 
 **自动**（推荐）—— 改脚本顶部的数组：
 

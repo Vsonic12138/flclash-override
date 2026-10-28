@@ -57,7 +57,21 @@ const GOOGLE_WITH_AI = [
   'lh3.googleusercontent.com',
   'lh3.google.com',
   'gemini.google.com',
+  'oauth2.googleapis.com',
+  'www.googleapis.com',
 ];
+
+// Antigravity 不能被机场原有的 Google / googleapis 直连规则截走。
+{
+  const cfg = makeConfig();
+  cfg.rules.unshift('DOMAIN-SUFFIX,googleapis.com,DIRECT', 'DOMAIN-SUFFIX,google,DIRECT');
+  const out = load().main(cfg);
+  for (const host of ['antigravity.google', 'cloudcode-pa.googleapis.com', 'daily-cloudcode-pa.googleapis.com', 'businessaicode.googleapis.com', 'rep.googleapis.com', 'aiplatform.googleapis.com', 'grok.com', 'x.ai']) {
+    const idx = out.rules.indexOf('DOMAIN-SUFFIX,' + host + ',' + AI);
+    assert.ok(idx >= 0, host + ' 必须显式走 AI');
+    assert.ok(idx < out.rules.indexOf('DOMAIN-SUFFIX,googleapis.com,DIRECT'), host + ' 必须优先于机场规则');
+  }
+}
 
 // ==================== 场景 1：默认（AI 组 + 上游名单都开） ====================
 {

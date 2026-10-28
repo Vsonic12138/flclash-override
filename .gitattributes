@@ -1,0 +1,3 @@
+
+# runtime.env 的节点前缀分隔符需要末尾空格。
+composer/runtime.env.example whitespace=-blank-at-eol

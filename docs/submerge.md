@@ -1,8 +1,10 @@
 [← 索引](../README.md)
 
-# 双订阅合并（`submerge/`）
+# 历史方案：本地双订阅合并（`submerge/`）
 
-两家机场各管一头：**赔钱**规则全、流媒体齐；**酷狗**有家宽节点——Gemini Antigravity 只认居住地机房 IP，普通机房节点会报 `not eligible for this account/region`。FlClash 一次只能启用一个订阅，来回切换很难受。
+> 当前主方案是 [服务器 composer](composer.md)。本页保留旧行为和排障记录，不代表现用家宽隔离与五组策略。
+
+两家机场各管一头：**赔钱**规则全、流媒体齐；**酷狗**有家宽节点——部分 AI 服务可能对出口地区或 IP 有要求，当时普通机房线路曾报 `not eligible for this account/region`。FlClash 一次只能启用一个订阅，来回切换很难受。
 
 `submerge/` 是个跑在 `127.0.0.1` 的小服务（Node 内置 http，无框架）：
 

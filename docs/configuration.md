@@ -1,6 +1,10 @@
+[← 索引](../README.md)
+
+> 本页主要说明单独使用 override.js 的兼容开关。当前服务器合成策略、默认与备用请看 [composer](composer.md)。
+
 # 开关与修改
 
-[← 索引](../README.md)
+
 
 ## 开关
 

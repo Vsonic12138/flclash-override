@@ -1,8 +1,22 @@
 [← 索引](../README.md)
 
-# 服务器端合并（Sub-Store + Caddy）
+# Sub-Store 与 Caddy
 
-`submerge/`（见 [双订阅合并](submerge.md)）只能在这台电脑上跑，换设备、换系统就得重配一遍。这个方案把合并搬到自己服务器：**一条 https 链接，在哪台设备都能用，订阅 token 也不落到本机配置里**。
+当前 Sub-Store 提供节点，Caddy 保护后台并转发 composer 完整订阅；客户端实际链路见 [架构](architecture.md)。以下包含早期直接订阅 Sub-Store 集合的历史示例。
+
+## 2026-10-27：后台登录与订阅下载分离
+
+- 后台网页、静态资源和 API 全部经过 Caddy HTTP Basic 登录。
+- 删除公开首页自动附带 `magicpath` 的跳转；后台入口用私有书签保存。
+- 已暴露的后台路径已轮换。旧路径和根路径 `/api/*` 不再提供管理 API。
+- 仅 composer 完整订阅的两个精确路径（原路径及 `.yaml`）和 `/ping.txt` 免登录。
+- Sub-Store 与 composer 后端仍只监听 `127.0.0.1`；内部 composer 拉节点不经过公网登录层。
+- 移除了两条订阅中没有脚本内容的 `Script Operator`，保留其余处理器；酷狗前缀由 composer 添加。
+- 后台账号和密码保存在服务器受限文件中；不要把密码、后台路径或真实订阅链接提交仓库。
+
+以下部署命令是基础组件示例；对公网使用时必须同时配置上述登录层。
+
+`submerge/`（见 [双订阅合并](submerge.md)）只能在这台电脑上跑，换设备、换系统就得重配一遍。这个方案把合并搬到自己服务器：**一条 https 链接，在哪台设备都能用，机场原始订阅由服务器管理；客户端仍会保存聚合订阅 URL，需按凭据保护**。
 
 ```
 FlClash ──https──> Caddy :443 ──> Sub-Store 后端 127.0.0.1:13000
@@ -27,7 +41,7 @@ FlClash ──https──> Caddy :443 ──> Sub-Store 后端 127.0.0.1:13000
 ## 部署（一次性）
 
 ```bash
-# 1. 后端：只监听 127.0.0.1，靠 Caddy 转发；随机路径就是密码
+# 1. 后端：只监听 127.0.0.1，靠 Caddy 登录层保护管理接口
 docker run -d --name substore --restart unless-stopped \
   -e SUB_STORE_BACKEND_MERGE=true \
   -e SUB_STORE_FRONTEND_BACKEND_PATH=/<后端路径> \
@@ -44,12 +58,20 @@ docker run -d --name caddy --restart unless-stopped --network host \
   caddy:2-alpine
 ```
 
-`/opt/substore-stack/Caddyfile` 只做两件事：把 `/<后端路径>/*` 反代给后端，根路径给前端静态壳；根路径的 `/api/*` 一律 404，扫描器拿不到接口。
+`/opt/substore-stack/Caddyfile` 将后台网页和 API 放在登录层之后；只有完整订阅下载入口单独放行。
 
 ```caddyfile
 sub.<你的域名> {
-	handle /<后端路径>/* { reverse_proxy 127.0.0.1:13000 }
-	handle { reverse_proxy 127.0.0.1:13000 }
+	@subscription path /<完整订阅路径> /<完整订阅路径>.yaml
+	handle @subscription { reverse_proxy 127.0.0.1:13200 }
+	handle {
+		basic_auth {
+			admin <caddy-hash-password生成的哈希>
+		}
+		@rootApi path /api/*
+		respond @rootApi 404
+		reverse_proxy 127.0.0.1:13000
+	}
 }
 ```
 
@@ -61,7 +83,8 @@ DNS 必须是**灰色云（仅 DNS）A 记录**指到 VPS。橙云会让 Let's E
 | --- | --- |
 | 管理后台（推荐书签）| `https://sub.<你的域名>/?magicpath=<后端路径去掉开头的 />`，打开即连上后端 |
 | 管理后台（裸地址）| `https://sub.<你的域名>/`，会弹窗让你填后端地址 `https://sub.<你的域名>/<后端路径>` |
-| FlClash 订阅 | `https://sub.<你的域名>/<后端路径>/download/collection/merge/ClashMeta` |
+| 内部节点订阅（受后台登录保护） | `https://sub.<你的域名>/<后端路径>/download/collection/merge/ClashMeta` |
+| FlClash 完整订阅 | composer 的独立随机下载路径，详见 [composer](composer.md) |
 | 健康检查 | `https://sub.<你的域名>/<后端路径>/api/collections` |
 
 订阅 URL 本身就是口令，等同于账户密码：**不进仓库、不发群、贴图前打码**。

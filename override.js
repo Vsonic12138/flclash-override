@@ -206,6 +206,8 @@ const AI_DOMAINS = [
   'clients6.google.com',
   'lh3.googleusercontent.com',
   'lh3.google.com',
+  'oauth2.googleapis.com',
+  'www.googleapis.com',
 
   // —— 补 Google 系 ——
   'gemini.google.com',
@@ -215,6 +217,24 @@ const AI_DOMAINS = [
   'jules.google',
   'deepmind.google',
   'makersuite.google.com',
+
+  // Antigravity：登录、模型目录、推理及区域 API 都固定到 AI 出口。
+  // 来源：https://antigravity.google/docs/enterprise/#network-allowlists-and-mtls-endpoints
+  'antigravity.google',
+  'cloudcode-pa.googleapis.com',
+  'daily-cloudcode-pa.googleapis.com',
+  'cloudaicompanion.googleapis.com',
+  'businessaicode.googleapis.com',
+  'businessaicode.mtls.googleapis.com',
+  'aiplatform.googleapis.com',
+  'aiplatform.mtls.googleapis.com',
+  'rep.googleapis.com',
+  'discoveryengine.googleapis.com',
+  'us-discoveryengine.googleapis.com',
+  'eu-discoveryengine.googleapis.com',
+  'discoveryengine.mtls.googleapis.com',
+  'us-discoveryengine.mtls.googleapis.com',
+  'eu-discoveryengine.mtls.googleapis.com',
 
   // —— 补 Anthropic / Claude ——
   'claude.ai',

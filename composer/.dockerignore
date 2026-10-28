@@ -1,0 +1,6 @@
+runtime.env
+*.env
+.env*
+data/
+node_modules/
+.git/

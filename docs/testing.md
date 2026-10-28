@@ -38,4 +38,10 @@ node test/verify-pipeline.js /path/to/profile.json
 cd composer && npm i && node test.js
 ```
 
-9 项离线断言：合并结果解析（含「只有空 proxies 时必须报错」负向用例）、重名去重、分组折叠、无 override.js 时补建组、新节点补组、校验器三类拦截（悬空引用 / provider 缺失 / 节点重名）。CI 里是独立 job `composer`，**不联网**。
+合成器检查节点合并、前缀、信息节点过滤、分组引用、家宽隔离、倍率和地区、公共规则优先级、用途分组、默认与备用及统一规则兜底。当前输出共 28 项，以实际测试输出为准。
+
+CI 有独立 composer job；安装 js-yaml 需要网络，单元测试本身不联网。smoke 另覆盖 Antigravity / OAuth / Grok 在通用 Google 规则前匹配。
+
+## 运行时验证边界
+
+离线测试不证明服务器已部署或节点可用。部署后核对新鲜构建、规则集加载、客户端选择、实际连接链路。故障回退优先在独立内核验证，避免破坏生产首选；实际短测不能代替长期稳定性、IP 类型和 AI 账号登录验证。
